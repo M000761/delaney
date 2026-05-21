@@ -1,0 +1,40 @@
+################################################################################
+# kidblock — one-time router setup commands
+#
+# After copying the four files in this folder to /config/scripts/ on the
+# EdgeRouter (the README explains how), SSH to the router and paste the block
+# below. It will:
+#   1. Make the scripts executable.
+#   2. Install the boot hook so iptables rules survive reboots.
+#   3. Schedule a 1-minute tick that enforces the schedule + expires overrides.
+#   4. Apply the current state immediately.
+#
+# Run as the ubnt user. Passwordless sudo is enabled for ubnt by default.
+################################################################################
+
+# --- Step 1: permissions ---
+sudo chmod +x /config/scripts/kidblock.sh
+sudo chmod +x /config/scripts/kidblock-init.sh
+sudo mkdir -p /config/scripts/post-config.d
+sudo cp /config/scripts/kidblock-init.sh /config/scripts/post-config.d/kidblock-init.sh
+sudo chmod +x /config/scripts/post-config.d/kidblock-init.sh
+
+# --- Step 2: schedule the 1-minute tick via EdgeOS task-scheduler ---
+configure
+set system task-scheduler task kidblock-tick interval 1m
+set system task-scheduler task kidblock-tick executable path /config/scripts/kidblock.sh
+set system task-scheduler task kidblock-tick executable arguments reapply
+commit
+save
+exit
+
+# --- Step 3: initialize iptables chain and apply current state ---
+sudo /config/scripts/kidblock.sh init
+
+# --- Step 4 (optional): install per-device DNS blocking for YouTube etc. ---
+# Blocks the domains in kidblock-domains.conf ONLY for the MACs in
+# kidblock-macs.conf. Other devices on the network are unaffected.
+sudo /config/scripts/kidblock.sh install-domains
+
+# --- Verify ---
+sudo /config/scripts/kidblock.sh status
