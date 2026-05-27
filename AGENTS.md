@@ -6,6 +6,8 @@
 
 **How we work:** this project follows **Draft-First Cowork** (artifact-first, mechanical validation, run-log over narrative, License to Execute). The canonical working agreement is in the cowork kernel at `../Cowork Project Prompt Enginner/_cowork/working-agreement.md`. The named-pattern lexicon (Spec Spiral, Subtree Cowork, etc.) is in the kernel's `pattern-catalogue.md`. When in doubt, don't pre-spec — draft the artifact, run the gate, log the result.
 
+**Council artefacts:** if you encounter a `_council/knowledge/` tree in this repo (multi-model arbitration: append-only `transactions/<run_id>/` write-model + evolved `conclusion.json` read-model; do NOT hand-edit), the outside-facing explainer is at `../Cowork Project Prompt Enginner/_cowork/_council/README.md` and the canonical schemas at `.../CONVENTION-council.md`. The tool is `plugin/tools/council.py`.
+
 ## Cowork session mount discipline
 
 When starting any Cowork chat task for this project, attach BOTH folders:
