@@ -3,10 +3,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:KidBlockUI.Views"
         Title="KidBlock"
-        Height="640" Width="1180"
+        Height="780" Width="1180"
         Background="#1E1E1E"
         Foreground="#DDDDDD"
-        FontFamily="Segoe UI">
+        FontFamily="Segoe UI"
+        StateChanged="OnWindowStateChanged"
+        Closing="OnWindowClosing">
     <Window.Resources>
         <SolidColorBrush x:Key="PaneBg"        Color="#252526"/>
         <SolidColorBrush x:Key="PaneHeaderBg"  Color="#2D2D30"/>
@@ -18,7 +20,9 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="*" MinHeight="200"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="220" MinHeight="80"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -222,7 +226,15 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="2" Background="{StaticResource PaneHeaderBg}" Padding="10,4"
+        <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
+                      VerticalAlignment="Center" Background="{StaticResource BorderSubtle}"
+                      ResizeBehavior="PreviousAndNext"
+                      ResizeDirection="Rows"
+                      ShowsPreview="False"/>
+
+        <v:LogTailPanel Grid.Row="3" DataContext="{Binding LogTail}"/>
+
+        <Border Grid.Row="4" Background="{StaticResource PaneHeaderBg}" Padding="10,4"
                 BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
             <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource MutedText}"/>
         </Border>

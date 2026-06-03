@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using KidBlockUI.Models;
@@ -190,6 +191,46 @@ public sealed class RouterClient : IDisposable
     {
         var text = await RunAsync($"sudo {_config.ScriptPath} status", ct).ConfigureAwait(false);
         return ParseStatus(text);
+    }
+
+    // Streams /var/log/kidblock.log line-by-line via an SSH ShellStream running
+    // `tail -n 50 -f`. Yields each line as it arrives; honors the cancellation token
+    // on a ~500ms boundary (the ShellStream ReadLine timeout). Caller is expected to
+    // wrap this in a reconnect-with-backoff loop -- this method is single-shot:
+    // on transient SSH failure (disconnect, refused, etc.) it surfaces the exception
+    // and the caller decides whether to retry.
+    public async IAsyncEnumerable<string> StreamLogAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+        if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+
+        // 200x50 terminal is wide enough that lines won't get hard-wrapped before
+        // they reach the ReadLine boundary; 4096-byte buffer matches Renci's example.
+        using var shell = ssh.CreateShellStream("kidblock-tail", 200, 50, 800, 600, 4096);
+
+        // Suppress echo so the command we send doesn't come back to us as a "line".
+        // The `2>/dev/null` swallows stty's warning on non-tty environments.
+        shell.WriteLine("stty -echo 2>/dev/null; tail -n 50 -f /var/log/kidblock.log");
+
+        while (!ct.IsCancellationRequested)
+        {
+            string? line = await Task.Run(() =>
+            {
+                try { return shell.ReadLine(TimeSpan.FromMilliseconds(500)); }
+                catch (ObjectDisposedException) { return null; }
+            }, ct).ConfigureAwait(false);
+
+            if (line is null) continue;
+
+            // The interactive shell echoes our own setup command on most EdgeOS sshd
+            // configs even with stty -echo (the line lands before stty takes effect).
+            // Drop the bootstrap line + any blank passes.
+            if (line.Length == 0) continue;
+            if (line.Contains("tail -n 50 -f /var/log/kidblock.log")) continue;
+
+            yield return line;
+        }
     }
 
     public void Dispose()

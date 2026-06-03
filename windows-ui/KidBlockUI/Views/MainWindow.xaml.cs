@@ -37,8 +37,32 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             UpdateConnDot();
+            // LogTail uses a SEPARATE SSH session so it can reconnect-with-backoff
+            // independently; start it before Refresh so the user sees log activity
+            // even if the initial Refresh fails.
+            _vm.LogTail.Start();
             await _vm.RefreshCommand.ExecuteAsync(null);
         };
+    }
+
+    private void OnWindowStateChanged(object? sender, System.EventArgs e)
+    {
+        if (_vm is null) return;
+        if (WindowState == WindowState.Minimized)
+        {
+            // Cancel the tail's SSH stream so we're not holding an idle session while hidden.
+            _vm.LogTail.Pause();
+        }
+        else
+        {
+            // Idempotent; Start() is a no-op if the consumer is already running.
+            _vm.LogTail.Start();
+        }
+    }
+
+    private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        _vm?.LogTail.Dispose();
     }
 
     private async void ApplySchedule_Click(object sender, RoutedEventArgs e)

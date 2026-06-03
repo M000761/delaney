@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using KidBlockUI.Models;
@@ -23,6 +24,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<DeviceRowViewModel> Devices { get; } = new();
     public ScheduleViewModel Schedule { get; } = new();
     public DomainsViewModel Domains { get; } = new();
+    public LogTailViewModel LogTail { get; }
 
     [ObservableProperty]
     private ConnectionState _connectionStatus = ConnectionState.Disconnected;
@@ -47,6 +49,9 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _config = config;
         RouterLabel = $"{config.User}@{config.Host}";
+        // LogTail owns its own RouterClient + SSH session so reconnect-with-backoff
+        // is independent of the main connection's lifecycle (Refresh, Apply, etc.).
+        LogTail = new LogTailViewModel(config, Dispatcher.CurrentDispatcher);
     }
 
     private void ApplyRouterOverrideState(RouterState state)

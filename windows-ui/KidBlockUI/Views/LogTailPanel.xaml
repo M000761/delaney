@@ -1,0 +1,160 @@
+<UserControl x:Class="KidBlockUI.Views.LogTailPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:KidBlockUI.Views"
+             Background="#1B1B1B"
+             Foreground="#DDDDDD"
+             FontFamily="Segoe UI">
+    <UserControl.Resources>
+        <v:LogKindToBrushConverter      x:Key="KindBrush"/>
+        <v:SearchHighlightConverter     x:Key="HighlightBrush"/>
+        <v:LogKindToFontWeightConverter x:Key="KindFontWeight"/>
+        <SolidColorBrush x:Key="PaneHeaderBg" Color="#2D2D30"/>
+        <SolidColorBrush x:Key="BorderSubtle" Color="#3F3F46"/>
+        <SolidColorBrush x:Key="MutedText"    Color="#AAAAAA"/>
+
+        <Style x:Key="FilterCheck" TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,0,10,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="#DDDDDD"/>
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel LastChildFill="True">
+
+        <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Header label + per; Kind filter checkboxes -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Live log" FontWeight="SemiBold" Margin="0,0,14,0"
+                               VerticalAlignment="Center"/>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowBlock}"
+                              ToolTip="Block events (a block window started or KILL fired)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#E55050"/>
+                            <TextBlock Text="Block"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowAllow}"
+                              ToolTip="Allow events (a block window ended or override granted)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#33CC66"/>
+                            <TextBlock Text="Allow"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowOverride}"
+                              ToolTip="Override events (manual block; allow with duration)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#FFC833"/>
+                            <TextBlock Text="Override"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowScheduleTick}"
+                              ToolTip="Schedule tick (state transitioned at a schedule boundary)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#999999"/>
+                            <TextBlock Text="Tick"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowInstall}"
+                              ToolTip="Domain blocklist install / uninstall">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#60A0E0"/>
+                            <TextBlock Text="Install"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowError}"
+                              ToolTip="Lines that failed to parse the kidblock.sh log format">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#FF4040"/>
+                            <TextBlock Text="Error"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding ShowOther}"
+                              ToolTip="Lines that parsed but did not match a known message family">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,4,0" Fill="#888888"/>
+                            <TextBlock Text="Other"/>
+                        </StackPanel>
+                    </CheckBox>
+                </StackPanel>
+
+                <!-- Spacer; right-side controls -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Search:" Margin="0,0,4,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource MutedText}"/>
+                    <TextBox x:Name="SearchBox" Width="140" Margin="0,0,12,0"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Background="#252526" Foreground="#DDDDDD"
+                             BorderBrush="{StaticResource BorderSubtle}"
+                             VerticalContentAlignment="Center"
+                             Padding="4,1"/>
+                    <CheckBox Style="{StaticResource FilterCheck}" IsChecked="{Binding AutoScroll}"
+                              ToolTip="Auto; scroll to newest entry as events arrive">
+                        <TextBlock Text="Auto-scroll"/>
+                    </CheckBox>
+                    <Button Content="Clear" Padding="10,2" Margin="4,0,0,0"
+                            Command="{Binding ClearCommand}"
+                            ToolTip="Clear the visible log; the live stream continues"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Top" Background="#252526" Padding="10,2"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+            <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource MutedText}"
+                       FontSize="11" FontStyle="Italic"/>
+        </Border>
+
+        <ScrollViewer x:Name="Scroller"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Background="#1B1B1B">
+            <ItemsControl ItemsSource="{Binding View}"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          ScrollViewer.CanContentScroll="True">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="10,1">
+                            <Border.Background>
+                                <MultiBinding Converter="{StaticResource HighlightBrush}">
+                                    <Binding Path="Message"/>
+                                    <Binding Path="DataContext.SearchText"
+                                             RelativeSource="{RelativeSource AncestorType={x:Type UserControl}}"/>
+                                </MultiBinding>
+                            </Border.Background>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Timestamp, StringFormat='HH:mm:ss'}"
+                                           FontFamily="Consolas" FontSize="11"
+                                           Foreground="{StaticResource MutedText}"
+                                           Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <Ellipse Width="8" Height="8" Margin="0,0,6,0"
+                                         VerticalAlignment="Center"
+                                         Fill="{Binding Kind, Converter={StaticResource KindBrush}}"/>
+                                <TextBlock Text="{Binding Message}"
+                                           FontFamily="Consolas" FontSize="12"
+                                           Foreground="{Binding Kind, Converter={StaticResource KindBrush}}"
+                                           FontWeight="{Binding Kind, Converter={StaticResource KindFontWeight}}"
+                                           TextWrapping="NoWrap"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>
