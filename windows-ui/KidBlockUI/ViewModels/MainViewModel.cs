@@ -20,7 +20,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly RouterConfig _config;
     private RouterClient? _client;
 
-    public ObservableCollection<Device> Devices { get; } = new();
+    public ObservableCollection<DeviceRowViewModel> Devices { get; } = new();
     public ScheduleViewModel Schedule { get; } = new();
     public ObservableCollection<DomainEntry> Domains { get; } = new();
 
@@ -39,10 +39,86 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string? _errorMessage;
 
+    // Registered by the View at startup. Returns true if the user confirms.
+    // (title, body) -> bool. Kept off the row VMs so they stay UI-thread-agnostic.
+    public Func<string, string, bool>? KillConfirm { get; set; }
+
     public MainViewModel(RouterConfig config)
     {
         _config = config;
         RouterLabel = $"{config.User}@{config.Host}";
+    }
+
+    private void ApplyRouterOverrideState(RouterState state)
+    {
+        var mode = string.IsNullOrEmpty(state.OverrideMode) ? null : state.OverrideMode;
+        foreach (var row in Devices) row.UpdateOverrideState(mode, state.OverrideExpires);
+    }
+
+    private async Task RefreshOverrideStateOnlyAsync(CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) return;
+        var state = await _client.GetStatusAsync(ct).ConfigureAwait(true);
+        ApplyRouterOverrideState(state);
+        Schedule.OverrideActive = !string.IsNullOrEmpty(state.OverrideMode);
+    }
+
+    public async Task OverrideBlockFromRowAsync(DeviceRowViewModel row, int minutes, CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) { row.ShowToast("Not connected"); return; }
+        var name = string.IsNullOrWhiteSpace(row.Name) ? row.Mac : row.Name;
+        var confirm = KillConfirm;
+        if (confirm is null) return;
+        var body =
+            $"Block ALL controlled devices for up to 24 hours.\n" +
+            $"(Triggered from row: {name})\n" +
+            $"\n" +
+            $"Schedule's next tick is still honored once the override expires. " +
+            $"Click Clear to release sooner.";
+        if (!confirm("Kill internet for controlled devices?", body)) return;
+
+        row.IsBusy = true;
+        try
+        {
+            await _client.OverrideBlockAsync(minutes, ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+            var until = row.OverrideExpires?.LocalDateTime.ToString("HH:mm") ?? "--:--";
+            row.ShowToast(minutes >= 1440 ? $"KILL applied (until {until})" : $"Blocked until {until}");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { row.ShowToast($"KILL failed: {ex.Message}"); }
+        finally { row.IsBusy = false; }
+    }
+
+    public async Task OverrideAllowFromRowAsync(DeviceRowViewModel row, int minutes, CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) { row.ShowToast("Not connected"); return; }
+        row.IsBusy = true;
+        try
+        {
+            await _client.OverrideAllowAsync(minutes, ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+            var until = row.OverrideExpires?.LocalDateTime.ToString("HH:mm") ?? "--:--";
+            row.ShowToast($"Allowed until {until}");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { row.ShowToast($"Allow failed: {ex.Message}"); }
+        finally { row.IsBusy = false; }
+    }
+
+    public async Task ClearOverrideFromRowAsync(DeviceRowViewModel row, CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) { row.ShowToast("Not connected"); return; }
+        row.IsBusy = true;
+        try
+        {
+            await _client.ClearOverrideAsync(ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+            row.ShowToast("Override cleared");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { row.ShowToast($"Clear failed: {ex.Message}"); }
+        finally { row.IsBusy = false; }
     }
 
     [RelayCommand]
@@ -77,12 +153,25 @@ public sealed partial class MainViewModel : ObservableObject
             var leaseByMac = new Dictionary<string, DhcpLease>(StringComparer.OrdinalIgnoreCase);
             foreach (var l in leases) leaseByMac[l.Mac] = l;
 
+            // Preserve any in-flight per-row state (e.g. last-action toast) when re-keying by MAC.
+            var existing = Devices.ToDictionary(r => r.Mac, StringComparer.OrdinalIgnoreCase);
             Devices.Clear();
             foreach (var d in macs)
             {
                 leaseByMac.TryGetValue(d.Mac, out var l);
-                Devices.Add(d with { Ip = l?.Ip, LastDhcp = l?.Expiry });
+                var enriched = d with { Ip = l?.Ip, LastDhcp = l?.Expiry };
+                if (existing.TryGetValue(d.Mac, out var prior))
+                {
+                    prior.UpdateLease(enriched.Ip, enriched.LastDhcp);
+                    Devices.Add(prior);
+                }
+                else
+                {
+                    Devices.Add(new DeviceRowViewModel(this, enriched));
+                }
             }
+
+            ApplyRouterOverrideState(state);
 
             Schedule.LoadFromRouter(windows);
             Schedule.OverrideActive = !string.IsNullOrEmpty(state.OverrideMode);

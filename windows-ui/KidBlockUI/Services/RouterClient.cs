@@ -122,6 +122,51 @@ public sealed class RouterClient : IDisposable
             }
         }, ct);
 
+    public Task OverrideBlockAsync(int minutes, CancellationToken ct = default) =>
+        RunOverrideAsync("override-block", minutes, ct);
+
+    public Task OverrideAllowAsync(int minutes, CancellationToken ct = default) =>
+        RunOverrideAsync("override-allow", minutes, ct);
+
+    public Task ClearOverrideAsync(CancellationToken ct = default) =>
+        Task.Run(() =>
+        {
+            var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+            if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+            ct.ThrowIfCancellationRequested();
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} clear-override");
+            cmd.CommandTimeout = TimeSpan.FromSeconds(15);
+            var output = cmd.Execute();
+            ct.ThrowIfCancellationRequested();
+            if (cmd.ExitStatus != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
+                throw new InvalidOperationException(
+                    $"kidblock.sh clear-override failed (exit {cmd.ExitStatus}): {err.Trim()}");
+            }
+        }, ct);
+
+    private Task RunOverrideAsync(string subcommand, int minutes, CancellationToken ct) =>
+        Task.Run(() =>
+        {
+            if (minutes < 1 || minutes > 1440)
+                throw new ArgumentOutOfRangeException(nameof(minutes), minutes,
+                    "Override minutes must be between 1 and 1440 (24h ceiling matches the PS1 shortcuts).");
+            var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+            if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+            ct.ThrowIfCancellationRequested();
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} {subcommand} {minutes}");
+            cmd.CommandTimeout = TimeSpan.FromSeconds(15);
+            var output = cmd.Execute();
+            ct.ThrowIfCancellationRequested();
+            if (cmd.ExitStatus != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
+                throw new InvalidOperationException(
+                    $"kidblock.sh {subcommand} {minutes} failed (exit {cmd.ExitStatus}): {err.Trim()}");
+            }
+        }, ct);
+
     public async Task<RouterState> GetStatusAsync(CancellationToken ct = default)
     {
         var text = await RunAsync($"sudo {_config.ScriptPath} status", ct).ConfigureAwait(false);

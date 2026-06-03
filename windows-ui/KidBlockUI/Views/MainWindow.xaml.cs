@@ -23,6 +23,16 @@ public partial class MainWindow : Window
             if (e.PropertyName == nameof(MainViewModel.ConnectionStatus))
                 UpdateConnDot();
         };
+        // Wire the destructive-confirm callback: KILL routes through ApplyConfirmDialog so
+        // the dialog idiom stays consistent with DM2's schedule-apply confirm.
+        _vm.KillConfirm = (title, body) =>
+        {
+            var lines = body
+                .Split('\n')
+                .Select(t => new DiffLine(DiffKind.Modify, t))
+                .ToList();
+            return ApplyConfirmDialog.Show(this, title, lines, "KILL");
+        };
         DataContext = _vm;
         Loaded += async (_, _) =>
         {

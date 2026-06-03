@@ -1,0 +1,25 @@
+[START] sit=DM3 ts=2026-06-03T09:57:26+00:00 host=delaney project=delaney
+[INFO] head_at_recon=b17e0a8835e7b2f6365c6a15b8f9e034807b3779
+[INFO] preset_invoked: ltf-attended
+[INFO] context-tier: mode=deliberate tier=1 (impact=quality surface=ui cascade=none) → proceed
+[GATE] context-tier-gate=proceed
+[GATE] tool-recon-tfi-edit=ok (kernel-tools-v1)
+[INFO] dependsOn-check: DM1=graduated DM2=graduated → satisfied
+[INFO] status-flip: id=DM3, from=proposed, to=inprogress
+[PHASE] start=orient ts=2026-06-03T09:57:26+00:00
+[INFO] recon: existing devices DataGrid is inline in MainWindow.xaml (no separate DevicesGrid.xaml or DevicesViewModel.cs) -- DM1 kept Devices flat on MainViewModel
+[INFO] recon: ApplyConfirmDialog.Show(owner, title, IReadOnlyList<DiffLine>, confirmLabel?) -- already supports reuse for KILL confirm
+[INFO] recon: RouterClient has SSH + RunAsync + GetStatusAsync; ParseStatus already extracts OverrideMode / OverrideExpires (minutes-remaining computed from "Override active: <mode> until <until> (<n> min remaining)")
+[INFO] design-find: kidblock.sh `cmd_override` takes ONLY `(mode, minutes)` -- NO MAC arg; the override is ROUTER-WIDE across the controlled-devices set (kidblock-macs.conf). Existing Override-Block.ps1 / Override-Allow.ps1 confirm: `override-block $n` / `override-allow $n`. Milestone-prompt language `override-block <MAC> 1440` was inaccurate to the router-side reality. Acceptance bar (f) ("no contract change to kidblock.sh") locks the router-wide model in. Resolution: per-row buttons stay (parent's finger goes to the device they're worried about), but the action is router-wide; KILL confirm-dialog copy says "Block ALL controlled devices for up to 24h" (mentions current row by name for context); badge state is router-wide so every row shows the same value. Recorded in discoveries.jsonl.
+[PHASE] start=work ts=2026-06-03T10:02:00+00:00
+[INFO] edit: windows-ui/KidBlockUI/Services/RouterClient.cs -- add OverrideBlockAsync(minutes) / OverrideAllowAsync(minutes) / ClearOverrideAsync(), with 1-1440 minute clamp matching Override-Block.ps1
+[INFO] create: windows-ui/KidBlockUI/ViewModels/DeviceRowViewModel.cs -- per-row VM with OverrideMode/Expires + 5s last-action toast (CancellationTokenSource-guarded re-arm) + KillCommand/Allow30mCommand/ClearOverrideCommand RelayCommands
+[INFO] edit: windows-ui/KidBlockUI/ViewModels/MainViewModel.cs -- Devices now ObservableCollection<DeviceRowViewModel>; preserve in-flight per-row state across refresh by re-keying on MAC; add KillConfirm Func<string,string,bool> hook; add OverrideBlockFromRowAsync/OverrideAllowFromRowAsync/ClearOverrideFromRowAsync (call router + refresh status only + per-row toast)
+[INFO] create: windows-ui/KidBlockUI/Views/InvertBoolConverter.cs -- IsBusy -> IsEnabled inversion (WPF ships no built-in inverse-bool)
+[INFO] edit: windows-ui/KidBlockUI/Views/MainWindow.xaml -- Devices DataGrid gains Override (badge) + Actions (KILL/Allow30m/Clear strip + toast row) columns; row height 48 to fit; InvertBool resource registered
+[INFO] edit: windows-ui/KidBlockUI/Views/MainWindow.xaml.cs -- wires KillConfirm to ApplyConfirmDialog (KILL confirm label, body packed as DiffLine list); zero behaviour change to the existing ApplySchedule path
+[GATE] dotnet-build=ok 0err 0warn (KidBlockUI.csproj, scratch out C:\Users\dr_go\AppData\Local\Temp\dm3-verify)
+[PHASE] start=close ts=2026-06-03T10:35:00+00:00
+[INFO] sequence_check=no-change (DM3 not in any cluster of _cowork/sequence-suggest.json)
+[INFO] findings_transport=embodied-in-code (discoveries.jsonl line written; the spec-vs-reality reconciliation IS the code change -- per-row UI affordance + router-wide action surface; no separate node or doc fold earned)
+[INFO] board_after_close=healthy (DM4/DM5/DM7 + adjacent proposed rows remain; no proposer-pass needed)

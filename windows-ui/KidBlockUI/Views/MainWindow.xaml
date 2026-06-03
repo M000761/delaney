@@ -13,6 +13,7 @@
         <SolidColorBrush x:Key="BorderSubtle"  Color="#3F3F46"/>
         <SolidColorBrush x:Key="MutedText"     Color="#AAAAAA"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <v:InvertBoolConverter        x:Key="InvertBool"/>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -71,12 +72,94 @@
                               RowBackground="Transparent"
                               AlternatingRowBackground="#2A2A2E"
                               HorizontalGridLinesBrush="{StaticResource BorderSubtle}"
-                              BorderThickness="0">
+                              BorderThickness="0"
+                              RowHeight="48">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Name"       Binding="{Binding Name}" Width="*"/>
                             <DataGridTextColumn Header="MAC"        Binding="{Binding Mac}"  Width="Auto"/>
+                            <DataGridTextColumn Header="IP"         Binding="{Binding Ip}" Width="120"/>
+                            <DataGridTemplateColumn Header="Override" Width="170">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding OverrideBadgeBackground}"
+                                                CornerRadius="3" Padding="6,2" Margin="4,6"
+                                                HorizontalAlignment="Left" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding OverrideBadgeText}"
+                                                       Foreground="White"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       FontWeight="SemiBold"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Actions" Width="240">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,4,2,2">
+                                                <Button Content="KILL"
+                                                        Command="{Binding KillCommand}"
+                                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                                        Background="#C03030" Foreground="White"
+                                                        FontWeight="Bold" FontSize="13"
+                                                        Padding="14,4" Margin="0,0,4,0"
+                                                        BorderBrush="#801818" BorderThickness="1"
+                                                        ToolTip="Block ALL controlled devices for up to 24h (router-wide override; clear to release sooner)"/>
+                                                <Button Content="Allow 30m"
+                                                        Command="{Binding Allow30mCommand}"
+                                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                                        Background="#339944" Foreground="White"
+                                                        Padding="10,4" Margin="0,0,4,0"
+                                                        BorderBrush="#1F6629" BorderThickness="1"
+                                                        ToolTip="Allow ALL controlled devices online for 30 minutes (router-wide override)"/>
+                                                <Button Content="Clear"
+                                                        Command="{Binding ClearOverrideCommand}"
+                                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                                        Background="#55555A" Foreground="White"
+                                                        Padding="10,4"
+                                                        BorderBrush="#33333A" BorderThickness="1"
+                                                        ToolTip="Clear any active override and revert to the schedule"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1" Margin="4,0,0,2"
+                                                       Text="{Binding LastActionText}"
+                                                       Foreground="#FFC833"
+                                                       FontSize="10"
+                                                       FontStyle="Italic">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Opacity" Value="1"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding LastActionText}" Value="{x:Null}">
+                                                                <DataTrigger.EnterActions>
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                             From="1" To="0" Duration="0:0:0.6"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </DataTrigger.EnterActions>
+                                                                <DataTrigger.ExitActions>
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                             To="1" Duration="0:0:0.15"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </DataTrigger.ExitActions>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Last DHCP"  Binding="{Binding LastDhcp, StringFormat='yyyy-MM-dd HH:mm'}" Width="110"/>
-                            <DataGridTextColumn Header="IP"         Binding="{Binding Ip}" Width="130"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
