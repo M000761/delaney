@@ -1,0 +1,12 @@
+# .NET / WPF build artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# JetBrains
+.idea/
+
+# OS junk
+Thumbs.db

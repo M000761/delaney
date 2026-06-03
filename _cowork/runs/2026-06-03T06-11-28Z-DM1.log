@@ -1,0 +1,42 @@
+[START] DM1 LTF-ATTENDED v15 sit 2026-06-03T06:11:28+00:00
+[INFO] head_at_recon=167138817362daad745b901c68ec77401d1a3f30
+[INFO] preset_invoked: ltf-attended
+[INFO] project=delaney mount=C:\CC\delaney dashboard=_cowork/dashboard-delaney.json remote=https://github.com/M000761/delaney.git branch=main
+[INFO] tier_eval: impact=structural surface=ui cascade=none -> Tier-2
+[INFO] mode=deliberate (H1 no [mode=...] token; default)
+[GATE] context-tier-gate=proceed
+[INFO] status-flip: id=DM1, from=proposed, to=inprogress
+[PHASE] start=orient ts=2026-06-03T06:11:28+00:00
+[INFO] orient: read PROJECT-MAP, dashboard-delaney.json DM1 row, windows/config.ps1, router/kidblock-{macs,schedule,domains}.conf, router/kidblock.sh
+[INFO] orient: SSH client per windows/config.ps1 -- host=192.168.200.1 user=ubnt key=$HOME/.ssh/kidblock_ed25519 script_path=/config/scripts/kidblock.sh
+[INFO] orient: parsers must tolerate '#' comments + blank lines; schedule parser additionally handles legacy bare HH:MM-HH:MM, '*' (every day), 'mon-thu' ranges (wrap), 'sat,sun' lists, 24:00 end-of-day
+[GATE] tfi-integrity=pass file=dashboard-delaney.json terminator='}'
+[INFO] dashboard-delaney.json validated: DM1 status=inprogress last=2026-06-03T06:11:28+00:00
+[PHASE] start=work ts=2026-06-03T06:11:28+00:00
+[INFO] work: scaffolding windows-ui/KidBlockUI/{App.xaml(.cs),appsettings.json,Models/,Services/,ViewModels/,Views/} + KidBlockUI.sln + KidBlockUI.csproj
+[INFO] sln written: windows-ui/KidBlockUI.sln (single project, GUID B2E5C2E1-4D8A-4A6F-9D11-4F1B2C0E1F01)
+[INFO] csproj written: net8.0-windows / WinExe / UseWPF=true / Nullable=enable / SSH.NET 2025.1.0 + CommunityToolkit.Mvvm 8.2.2
+[INFO] appsettings.json written: Router section harvested from windows/config.ps1 defaults (host 192.168.200.1 / user ubnt / key %USERPROFILE%\.ssh\kidblock_ed25519)
+[INFO] Models/ written: Device / ScheduleWindow / DomainEntry / RouterState (sealed records; ScheduleWindow.EndMin==1440 sentinel for 24:00 end-of-day)
+[INFO] Services/ConfigParser.cs written: ParseMacs / ParseSchedule / ParseDomains; schedule parser handles legacy bare HH:MM-HH:MM + day-spec (*, mon, mon-thu wrap, sat,sun list, 24:00 end-of-day)
+[INFO] Services/RouterClient.cs written: RouterConfig record + DhcpLease record + RouterClient (ConnectAsync / RunAsync / GetDhcpLeasesAsync / GetConfigFileAsync / GetStatusAsync); ParseDhcpLeases + ParseStatus internal-visible for later milestones' unit tests
+[INFO] ViewModels/MainViewModel.cs written: ObservableObject + ObservableCollections + ConnectionState enum + RelayCommand RefreshAsync (Task.WhenAll 4 reads, sticky-last-known on disconnect with Stale label)
+[INFO] Views/MainWindow.xaml(.cs) written: top bar (status dot + router label + Refresh) / 30:40:30 split (DataGrid Devices, ListBox Schedule, ListBox Domains) / bottom strip status label
+[INFO] config.ps1 NOT modified -- LoadConfig walks 5 parent-relative probes to find windows/config.ps1 + parses host/user/script/keypath via regex; appsettings.json overrides if present
+[INFO] build:dotnet_restore_initial_fail rc=1 NU1102 'Renci.SshNet' not found -- discovery: NuGet package id is SSH.NET, namespace stays Renci.SshNet
+[INFO] build:dotnet_restore_retry rc=0 SSH.NET 2025.1.0 resolved
+[GATE] build-zero-warnings=pass solution=windows-ui/KidBlockUI.sln out=$env:TEMP\kidblockui-scratch artifacts=KidBlockUI.exe+KidBlockUI.dll+appsettings.json+SSH.NET+CommunityToolkit.Mvvm+BouncyCastle
+[INFO] acceptance: (a) PASS dotnet build 0 warnings 0 errors -- structural / agent-verifiable
+[INFO] acceptance: (h) PASS windows/*.ps1 untouched (LoadConfig is READ-ONLY on config.ps1) -- structural / agent-verifiable
+[INFO] acceptance: (b)(c)(d)(e)(f)(g) DEFERRED to Adam's eyes-on at the live router -- requires interactive launch + 192.168.200.1 + kidblock_ed25519 key
+[PHASE] start=close ts=2026-06-03T06:11:28+00:00
+[INFO] sequence_check=no-change (DM1 in 0 sequence-suggest clusters)
+[INFO] findings_transport=1-routed (discoveries.jsonl: nuget-package-id-renci-vs-sshnet)
+[INFO] board_after_close=healthy (DM2-DM6 queued, DM2 unblocks on DM1 graduate)
+[INFO] §4 report ===
+[INFO] Asked for:    DM1 -- WPF .NET 8 KidBlockUI foundation (SSH client + 3 config parsers + 3-pane read-only MainWindow), no router writes, no timeline, no domain toggles.
+[INFO] Shipped:      windows-ui/KidBlockUI.sln + KidBlockUI.csproj (SSH.NET 2025.1.0 + CommunityToolkit.Mvvm 8.2.2) + Models{Device,ScheduleWindow,DomainEntry,RouterState} + Services{ConfigParser,RouterClient} + ViewModels/MainViewModel + Views/MainWindow.xaml(.cs); appsettings.json with windows/config.ps1-derived defaults; dotnet build 0/0; acceptance (a)+(h) PASS structurally; (b)-(g) deferred to Adam's eyes-on at the live router.
+[INFO] Time went on: ~70% on writing the C#/XAML files (clean first-try, no rework); ~10% on the SSH.NET-vs-Renci.SshNet package-id discovery + csproj fix-up; ~20% on recon + run-log + close. Overhead under shipping.
+[INFO] Next:         (b)(c)(d)(e)(f)(g) live-router verification belongs to a follow-up sit when you can launch KidBlockUI.exe from windows-ui/KidBlockUI/bin/Debug/net8.0-windows/ on a machine that can reach 192.168.200.1 with the kidblock_ed25519 key. If any acceptance bar misses, ingest a fresh DM-prefix follow-up node (rail 36 fresh node, not body-amend). Otherwise DM2 (schedule timeline) is next and now unblocked.
+[INFO] head_check_at_emit=unchanged: was=167138817362daad745b901c68ec77401d1a3f30 now=167138817362daad745b901c68ec77401d1a3f30
+[INFO] cleanup_cap: add .gitignore excluding obj/ + bin/ -- dotnet build of windows-ui/KidBlockUI/ this sit created left obj/ in the source tree; folding the .gitignore avoids committing build junk + makes the next .NET-build sit's git status clean. Trivial, sit-bound to the windows-ui/ tree this sit introduced, declared per rail 36 leg-(a).
