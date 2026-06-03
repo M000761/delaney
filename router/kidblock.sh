@@ -8,31 +8,73 @@
 #          range:  mon-thu, fri-sun, sat-mon (wraps)
 #          list:   sat,sun  or  mon,wed,fri
 #          omitted = applies to all days (legacy format)
+#
+# MAC file format (kidblock-macs.conf):
+#   aa:bb:cc:dd:ee:ff   Label or hostname              # default mode = blocklist
+#   aa:bb:cc:dd:ee:ff   Label or hostname  mode:whitelist
+#
+# Per-device mode (DM6):
+#   blocklist (default): device reaches everything EXCEPT IPs resolved from
+#                        domains in kidblock-domains.conf.
+#   whitelist:           device reaches NOTHING except IPs resolved from
+#                        domains in kidblock-allowlist.conf (homework-hour use case).
+#   Both modes still honour the schedule's full-block windows (KIDBLOCK_TIME).
 
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MAC_CONF="${SCRIPT_DIR}/kidblock-macs.conf"
 DOMAIN_CONF="${SCRIPT_DIR}/kidblock-domains.conf"
+ALLOW_CONF="${SCRIPT_DIR}/kidblock-allowlist.conf"
 SCHED_CONF="${SCRIPT_DIR}/kidblock-schedule.conf"
 STATE_FILE="/var/run/kidblock.state"
 OVERRIDE_FILE="/var/run/kidblock.override"
 LOG_FILE="/var/log/kidblock.log"
 CHAIN_TIME="KIDBLOCK_TIME"
 CHAIN_DOMAINS="KIDBLOCK_DOMAINS"
+CHAIN_WHITELIST="KIDBLOCK_WHITELIST"
 IPSET_V4="kidblock_domains_v4"
 IPSET_V6="kidblock_domains_v6"
+IPSET_ALLOW_V4="kidblock_allow_v4"
+IPSET_ALLOW_V6="kidblock_allow_v6"
 DNSMASQ_CONF="/etc/dnsmasq.d/kidblock-domains.conf"
+DNSMASQ_ALLOW_CONF="/etc/dnsmasq.d/kidblock-allowlist.conf"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE" 2>/dev/null || true; }
 
+# All controlled MACs regardless of mode -- KIDBLOCK_TIME blocks everyone during
+# schedule windows. Mode-specific helpers below filter for the domain / whitelist chains.
 get_macs() {
   [ -f "$MAC_CONF" ] || return 0
   awk 'NF && $1 !~ /^#/ { print tolower($1) }' "$MAC_CONF"
 }
 
+# Returns MACs whose row has NO mode:xxx token, OR mode:blocklist.
+# Trailing-token-tolerant: scans from $NF backwards for the first mode:xxx field.
+get_macs_blocklist() {
+  [ -f "$MAC_CONF" ] || return 0
+  awk 'NF && $1 !~ /^#/ {
+    mode = "blocklist"
+    for (i = NF; i > 1; i--) {
+      if ($i ~ /^mode:/) { mode = substr($i, 6); break }
+    }
+    if (mode == "blocklist") print tolower($1)
+  }' "$MAC_CONF"
+}
+
+get_macs_whitelist() {
+  [ -f "$MAC_CONF" ] || return 0
+  awk 'NF && $1 !~ /^#/ {
+    mode = "blocklist"
+    for (i = NF; i > 1; i--) {
+      if ($i ~ /^mode:/) { mode = substr($i, 6); break }
+    }
+    if (mode == "whitelist") print tolower($1)
+  }' "$MAC_CONF"
+}
+
 ensure_chains() {
-  for c in "$CHAIN_TIME" "$CHAIN_DOMAINS"; do
+  for c in "$CHAIN_TIME" "$CHAIN_DOMAINS" "$CHAIN_WHITELIST"; do
     iptables  -nL "$c" >/dev/null 2>&1 || iptables  -N "$c"
     ip6tables -nL "$c" >/dev/null 2>&1 || ip6tables -N "$c"
     iptables  -C FORWARD -j "$c" 2>/dev/null || iptables  -I FORWARD 1 -j "$c"
@@ -45,6 +87,10 @@ ensure_ipsets() {
     ipset create "$IPSET_V4" hash:ip family inet  timeout 0 maxelem 65536 2>/dev/null || true
   ipset list "$IPSET_V6" >/dev/null 2>&1 || \
     ipset create "$IPSET_V6" hash:ip family inet6 timeout 0 maxelem 65536 2>/dev/null || true
+  ipset list "$IPSET_ALLOW_V4" >/dev/null 2>&1 || \
+    ipset create "$IPSET_ALLOW_V4" hash:ip family inet  timeout 0 maxelem 65536 2>/dev/null || true
+  ipset list "$IPSET_ALLOW_V6" >/dev/null 2>&1 || \
+    ipset create "$IPSET_ALLOW_V6" hash:ip family inet6 timeout 0 maxelem 65536 2>/dev/null || true
 }
 
 flush_time_chain() {
@@ -55,6 +101,11 @@ flush_time_chain() {
 flush_domain_chain() {
   iptables  -F "$CHAIN_DOMAINS" 2>/dev/null || true
   ip6tables -F "$CHAIN_DOMAINS" 2>/dev/null || true
+}
+
+flush_whitelist_chain() {
+  iptables  -F "$CHAIN_WHITELIST" 2>/dev/null || true
+  ip6tables -F "$CHAIN_WHITELIST" 2>/dev/null || true
 }
 
 apply_block() {
@@ -90,11 +141,34 @@ apply_domain_rules() {
   flush_domain_chain
   iptables  -A "$CHAIN_DOMAINS" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
   ip6tables -A "$CHAIN_DOMAINS" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  # Blocklist MACs only -- whitelist MACs are filtered via KIDBLOCK_WHITELIST instead.
   while IFS= read -r mac; do
     [ -z "$mac" ] && continue
     iptables  -A "$CHAIN_DOMAINS" -m mac --mac-source "$mac" -m set --match-set "$IPSET_V4" dst -j DROP
     ip6tables -A "$CHAIN_DOMAINS" -m mac --mac-source "$mac" -m set --match-set "$IPSET_V6" dst -j DROP
-  done < <(get_macs)
+  done < <(get_macs_blocklist)
+}
+
+# Default-DROP for each whitelist MAC, with RETURN-if-in-allow-set as the carve-out.
+# Order inside the chain (per MAC): ESTABLISHED bypass -> RETURN if dst in allow set -> DROP.
+# RETURN exits this chain only -- the packet still passes KIDBLOCK_TIME / KIDBLOCK_DOMAINS,
+# but those won't match a whitelist MAC since both are scoped to other MAC sets.
+apply_whitelist_rules() {
+  ensure_chains
+  ensure_ipsets
+  flush_whitelist_chain
+  iptables  -A "$CHAIN_WHITELIST" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  ip6tables -A "$CHAIN_WHITELIST" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  local count=0
+  while IFS= read -r mac; do
+    [ -z "$mac" ] && continue
+    iptables  -A "$CHAIN_WHITELIST" -m mac --mac-source "$mac" -m set --match-set "$IPSET_ALLOW_V4" dst -j RETURN
+    ip6tables -A "$CHAIN_WHITELIST" -m mac --mac-source "$mac" -m set --match-set "$IPSET_ALLOW_V6" dst -j RETURN
+    iptables  -A "$CHAIN_WHITELIST" -m mac --mac-source "$mac" -j DROP
+    ip6tables -A "$CHAIN_WHITELIST" -m mac --mac-source "$mac" -j DROP
+    count=$((count+1))
+  done < <(get_macs_whitelist)
+  [ "$count" -gt 0 ] && log "applied whitelist ($count MACs, default-DROP + allow-set carve-out)"
 }
 
 current_state() {
@@ -219,6 +293,7 @@ cmd_allow()   { apply_allow; }
 cmd_reapply() {
   ensure_chains
   apply_domain_rules
+  apply_whitelist_rules
   local want; want=$(desired_state)
   local cur;  cur=$(current_state)
   if [ "$want" != "$cur" ]; then
@@ -298,11 +373,27 @@ cmd_status() {
     echo "  disabled (run: sudo $0 install-domains)"
   fi
   echo
+  echo "Per-device whitelist (allowlist):"
+  if [ -f "$DNSMASQ_ALLOW_CONF" ]; then
+    local allow_count av4 av6 wl_macs
+    allow_count=$(awk 'NF && $1 !~ /^#/' "$ALLOW_CONF" 2>/dev/null | wc -l)
+    av4=$(ipset list "$IPSET_ALLOW_V4" 2>/dev/null | awk '/Number of entries/{print $4}')
+    av6=$(ipset list "$IPSET_ALLOW_V6" 2>/dev/null | awk '/Number of entries/{print $4}')
+    wl_macs=$(get_macs_whitelist | wc -l)
+    echo "  ENABLED: $allow_count domains in conf, $wl_macs whitelist MACs"
+    echo "  ipset entries currently: v4=${av4:-0}  v6=${av6:-0}"
+  else
+    echo "  disabled (run: sudo $0 install-allowlist)"
+  fi
+  echo
   echo "iptables KIDBLOCK_TIME rules:"
   iptables -nvL "$CHAIN_TIME" 2>/dev/null | sed 's/^/  /' || echo "  (chain missing)"
   echo
   echo "iptables KIDBLOCK_DOMAINS rules:"
   iptables -nvL "$CHAIN_DOMAINS" 2>/dev/null | sed 's/^/  /' || echo "  (chain missing)"
+  echo
+  echo "iptables KIDBLOCK_WHITELIST rules:"
+  iptables -nvL "$CHAIN_WHITELIST" 2>/dev/null | sed 's/^/  /' || echo "  (chain missing)"
 }
 
 cmd_install_domains() {
@@ -325,7 +416,7 @@ cmd_install_domains() {
   apply_domain_rules
   log "installed per-device domain blocklist ($count domains)"
   echo "Per-device domain blocklist installed ($count domains)."
-  echo "Blocked only for MACs in $MAC_CONF; other devices unaffected."
+  echo "Blocked only for MACs in $MAC_CONF (mode != whitelist); other devices unaffected."
 }
 
 cmd_uninstall_domains() {
@@ -340,6 +431,41 @@ cmd_uninstall_domains() {
   echo "Per-device domain blocklist removed."
 }
 
+cmd_install_allowlist() {
+  if [ ! -f "$ALLOW_CONF" ]; then
+    echo "No $ALLOW_CONF — nothing to install." >&2
+    exit 1
+  fi
+  ensure_ipsets
+  : > "$DNSMASQ_ALLOW_CONF"
+  local count=0
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="${line//[[:space:]]/}"
+    [ -z "$line" ] && continue
+    echo "ipset=/${line}/${IPSET_ALLOW_V4},${IPSET_ALLOW_V6}" >> "$DNSMASQ_ALLOW_CONF"
+    count=$((count+1))
+  done < "$ALLOW_CONF"
+  # Hard restart, not SIGHUP — dnsmasq's ipset directives don't re-evaluate on SIGHUP.
+  killall dnsmasq 2>/dev/null; sleep 1; /etc/init.d/dnsmasq start >/dev/null 2>&1 || true
+  apply_whitelist_rules
+  log "installed per-device whitelist ($count domains)"
+  echo "Per-device whitelist installed ($count allowed domains)."
+  echo "Applied only to MACs in $MAC_CONF marked mode:whitelist; all other dest IPs DROPPED for those MACs."
+}
+
+cmd_uninstall_allowlist() {
+  rm -f "$DNSMASQ_ALLOW_CONF"
+  killall dnsmasq 2>/dev/null; sleep 1; /etc/init.d/dnsmasq start >/dev/null 2>&1 || true
+  flush_whitelist_chain
+  ipset flush "$IPSET_ALLOW_V4" 2>/dev/null || true
+  ipset flush "$IPSET_ALLOW_V6" 2>/dev/null || true
+  ipset destroy "$IPSET_ALLOW_V4" 2>/dev/null || true
+  ipset destroy "$IPSET_ALLOW_V6" 2>/dev/null || true
+  log "removed per-device whitelist"
+  echo "Per-device whitelist removed. Whitelist MACs now unrestricted (subject to schedule + blocklist)."
+}
+
 case "${1:-}" in
   block)               cmd_block ;;
   allow)               cmd_allow ;;
@@ -350,9 +476,11 @@ case "${1:-}" in
   clear-override)      cmd_clear_override ;;
   install-domains)     cmd_install_domains ;;
   uninstall-domains)   cmd_uninstall_domains ;;
-  init)                ensure_chains; apply_domain_rules; cmd_reapply ;;
+  install-allowlist)   cmd_install_allowlist ;;
+  uninstall-allowlist) cmd_uninstall_allowlist ;;
+  init)                ensure_chains; apply_domain_rules; apply_whitelist_rules; cmd_reapply ;;
   *)
-    echo "Usage: $0 {block|allow|reapply|status|override-allow N|override-block N|clear-override|install-domains|uninstall-domains|init}"
+    echo "Usage: $0 {block|allow|reapply|status|override-allow N|override-block N|clear-override|install-domains|uninstall-domains|install-allowlist|uninstall-allowlist|init}"
     exit 1
     ;;
 esac

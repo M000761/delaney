@@ -64,6 +64,8 @@
                         <TextBlock Text="Devices" FontWeight="SemiBold"/>
                     </Border>
                     <DataGrid ItemsSource="{Binding Devices}"
+                              SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                              SelectionMode="Single"
                               AutoGenerateColumns="False"
                               GridLinesVisibility="Horizontal"
                               HeadersVisibility="Column"
@@ -82,6 +84,33 @@
                             <DataGridTextColumn Header="Name"       Binding="{Binding Name}" Width="*"/>
                             <DataGridTextColumn Header="MAC"        Binding="{Binding Mac}"  Width="Auto"/>
                             <DataGridTextColumn Header="IP"         Binding="{Binding Ip}" Width="120"/>
+                            <DataGridTemplateColumn Header="Mode" Width="110">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding ModeLabel}"
+                                                Command="{Binding ToggleModeCommand}"
+                                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                                FontFamily="Consolas" FontSize="11"
+                                                FontWeight="SemiBold" Foreground="White"
+                                                Padding="10,3" Margin="4,8"
+                                                BorderThickness="1"
+                                                ToolTip="Click to toggle this device between Blocklist and Whitelist mode. Writes kidblock-macs.conf + runs reapply.">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Background"  Value="#446677"/>
+                                                    <Setter Property="BorderBrush" Value="#2E4858"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsWhitelist}" Value="True">
+                                                            <Setter Property="Background"  Value="#996610"/>
+                                                            <Setter Property="BorderBrush" Value="#6A4708"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Override" Width="170">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>

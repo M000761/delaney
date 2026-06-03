@@ -41,9 +41,25 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string? _errorMessage;
 
+    [ObservableProperty]
+    private DeviceRowViewModel? _selectedDevice;
+
+    // Cache of the most-recently-read kidblock-macs.conf text -- needed to round-trip
+    // a Mode toggle without losing label / formatting on rows we didn't touch.
+    private string _lastMacsConfText = string.Empty;
+
     // Registered by the View at startup. Returns true if the user confirms.
     // (title, body) -> bool. Kept off the row VMs so they stay UI-thread-agnostic.
     public Func<string, string, bool>? KillConfirm { get; set; }
+
+    partial void OnSelectedDeviceChanged(DeviceRowViewModel? value)
+    {
+        // Pivot the Domains pane to reflect the selected device's mode. Null = no
+        // selection (e.g. after Refresh briefly drops it); leave the pane alone so
+        // the badge / pending count don't strobe.
+        if (value is null) return;
+        Domains.CurrentMode = value.Mode;
+    }
 
     public MainViewModel(RouterConfig config)
     {
@@ -141,25 +157,32 @@ public sealed partial class MainViewModel : ObservableObject
             }
             ConnectionStatus = ConnectionState.Connected;
 
-            var dhcpTask   = _client.GetDhcpLeasesAsync(ct);
-            var macsTask   = _client.GetConfigFileAsync(_config.MacConfPath, ct);
-            var schedTask  = _client.GetConfigFileAsync(_config.ScheduleConfPath, ct);
-            var domTask    = _client.GetConfigFileAsync(_config.DomainsConfPath, ct);
-            var statusTask = _client.GetStatusAsync(ct);
+            var dhcpTask    = _client.GetDhcpLeasesAsync(ct);
+            var macsTask    = _client.GetConfigFileAsync(_config.MacConfPath, ct);
+            var schedTask   = _client.GetConfigFileAsync(_config.ScheduleConfPath, ct);
+            var domTask     = _client.GetConfigFileAsync(_config.DomainsConfPath, ct);
+            // Allowlist read is best-effort -- the file may legitimately not exist
+            // (whitelist mode never installed). Empty body parses to zero domains.
+            var allowTask   = SafeGetAsync(_client, _config.AllowlistConfPath, ct);
+            var statusTask  = _client.GetStatusAsync(ct);
 
-            await Task.WhenAll(dhcpTask, macsTask, schedTask, domTask, statusTask).ConfigureAwait(true);
+            await Task.WhenAll(dhcpTask, macsTask, schedTask, domTask, allowTask, statusTask).ConfigureAwait(true);
 
-            var leases  = await dhcpTask.ConfigureAwait(true);
-            var macs    = ConfigParser.ParseMacs(await macsTask.ConfigureAwait(true));
-            var windows = ConfigParser.ParseSchedule(await schedTask.ConfigureAwait(true));
-            var domains = ConfigParser.ParseDomains(await domTask.ConfigureAwait(true));
-            var state   = await statusTask.ConfigureAwait(true);
+            var leases       = await dhcpTask.ConfigureAwait(true);
+            var macsText     = await macsTask.ConfigureAwait(true);
+            _lastMacsConfText = macsText;
+            var macs         = ConfigParser.ParseMacs(macsText);
+            var windows      = ConfigParser.ParseSchedule(await schedTask.ConfigureAwait(true));
+            var domains      = ConfigParser.ParseDomains(await domTask.ConfigureAwait(true));
+            var allowDomains = ConfigParser.ParseDomains(await allowTask.ConfigureAwait(true));
+            var state        = await statusTask.ConfigureAwait(true);
 
             var leaseByMac = new Dictionary<string, DhcpLease>(StringComparer.OrdinalIgnoreCase);
             foreach (var l in leases) leaseByMac[l.Mac] = l;
 
             // Preserve any in-flight per-row state (e.g. last-action toast) when re-keying by MAC.
             var existing = Devices.ToDictionary(r => r.Mac, StringComparer.OrdinalIgnoreCase);
+            var priorSelectedMac = SelectedDevice?.Mac;
             Devices.Clear();
             foreach (var d in macs)
             {
@@ -167,7 +190,7 @@ public sealed partial class MainViewModel : ObservableObject
                 var enriched = d with { Ip = l?.Ip, LastDhcp = l?.Expiry };
                 if (existing.TryGetValue(d.Mac, out var prior))
                 {
-                    prior.UpdateLease(enriched.Ip, enriched.LastDhcp);
+                    prior.UpdateFromConfig(enriched);
                     Devices.Add(prior);
                 }
                 else
@@ -181,11 +204,23 @@ public sealed partial class MainViewModel : ObservableObject
             Schedule.LoadFromRouter(windows);
             Schedule.OverrideActive = !string.IsNullOrEmpty(state.OverrideMode);
 
-            Domains.LoadFromRouter(domains);
+            Domains.LoadBlocklistFromRouter(domains);
+            Domains.LoadAllowlistFromRouter(allowDomains);
+
+            // Restore selection by MAC (DataGrid drops SelectedItem when ItemsSource
+            // is reset). Then either the user's prior selection holds, or default to
+            // the first row so the Domains pane always reflects something coherent.
+            if (priorSelectedMac is not null)
+                SelectedDevice = Devices.FirstOrDefault(r => string.Equals(r.Mac, priorSelectedMac, StringComparison.OrdinalIgnoreCase))
+                                 ?? Devices.FirstOrDefault();
+            else
+                SelectedDevice ??= Devices.FirstOrDefault();
 
             LastRefresh = System.DateTimeOffset.Now;
+            var allowCount = allowDomains.Count;
             StatusLabel = $"Last refresh {LastRefresh:HH:mm:ss} -- " +
-                          $"{Devices.Count} devices / {Schedule.Schedule.Count} windows / {Domains.Domains.Count} domains";
+                          $"{Devices.Count} devices / {Schedule.Schedule.Count} windows / " +
+                          $"{domains.Count} blocked / {allowCount} allowed";
         }
         catch (OperationCanceledException)
         {
@@ -220,17 +255,23 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var content = Domains.SerializeEdited();
-            await _client.WriteConfigFileAsync(_config.DomainsConfPath, content, ct).ConfigureAwait(true);
-            await _client.InstallDomainsAsync(ct).ConfigureAwait(true);
+            var isWhitelist = Domains.CurrentMode == DeviceMode.Whitelist;
+            var targetPath = isWhitelist ? _config.AllowlistConfPath : _config.DomainsConfPath;
+
+            await _client.WriteConfigFileAsync(targetPath, content, ct).ConfigureAwait(true);
+            if (isWhitelist)
+                await _client.InstallAllowlistAsync(ct).ConfigureAwait(true);
+            else
+                await _client.InstallDomainsAsync(ct).ConfigureAwait(true);
 
             // Poll-verify within 5s: read back, parse, compare against EditedDomains.
-            // install-domains restarts dnsmasq so allow a wider retry window than schedule's reapply.
+            // install-* restarts dnsmasq so allow a wider retry window than schedule's reapply.
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             var verified = false;
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                var text = await _client.GetConfigFileAsync(_config.DomainsConfPath, ct).ConfigureAwait(true);
+                var text = await _client.GetConfigFileAsync(targetPath, ct).ConfigureAwait(true);
                 var remoteParsed = ConfigParser.ParseDomains(text);
                 if (Domains.MatchesRouter(remoteParsed)) { verified = true; break; }
                 await Task.Delay(500, ct).ConfigureAwait(true);
@@ -242,8 +283,9 @@ public sealed partial class MainViewModel : ObservableObject
             }
             else
             {
+                var verb = isWhitelist ? "Allowlist" : "Domains";
                 Domains.ApplyError =
-                    "Domains pushed but post-verify mismatched router state. " +
+                    $"{verb} pushed but post-verify mismatched router state. " +
                     "Edited view restored to last-known router state. Click Refresh to reload.";
                 Domains.Discard();
             }
@@ -260,6 +302,51 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Domains.IsApplying = false;
         }
+    }
+
+    public async Task ToggleDeviceModeAsync(DeviceRowViewModel row, CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) { row.ShowToast("Not connected"); return; }
+        row.IsBusy = true;
+        var oldMode = row.Mode;
+        var newMode = oldMode == DeviceMode.Whitelist ? DeviceMode.Blocklist : DeviceMode.Whitelist;
+        try
+        {
+            // Pivot just THIS device's Mode -- keep every other device's row untouched.
+            var asDevices = Devices
+                .Select(r => r.Mac.Equals(row.Mac, StringComparison.OrdinalIgnoreCase)
+                    ? r.Device with { Mode = newMode }
+                    : r.Device)
+                .ToList();
+            var newConf = ConfigParser.SerializeMacs(_lastMacsConfText, asDevices);
+            await _client.WriteConfigFileAsync(_config.MacConfPath, newConf, ct).ConfigureAwait(true);
+            _lastMacsConfText = newConf;
+
+            // Re-apply iptables -- whitelist rules get rebuilt on the new MAC partitioning.
+            await _client.ReapplyAsync(ct).ConfigureAwait(true);
+
+            // Local round-trip: update the row's Device.Mode + repaint the pane if this
+            // is the selected row.
+            row.UpdateFromConfig(row.Device with { Mode = newMode });
+            if (ReferenceEquals(SelectedDevice, row)) Domains.CurrentMode = newMode;
+
+            row.ShowToast(newMode == DeviceMode.Whitelist ? "Mode -> Whitelist" : "Mode -> Blocklist");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            row.ShowToast($"Mode toggle failed: {ex.Message}");
+        }
+        finally
+        {
+            row.IsBusy = false;
+        }
+    }
+
+    private static async Task<string> SafeGetAsync(RouterClient client, string path, CancellationToken ct)
+    {
+        try { return await client.GetConfigFileAsync(path, ct).ConfigureAwait(false); }
+        catch { return string.Empty; }
     }
 
     public async Task ApplyScheduleAsync(Func<IReadOnlyList<DiffLine>, bool> confirm, CancellationToken ct = default)

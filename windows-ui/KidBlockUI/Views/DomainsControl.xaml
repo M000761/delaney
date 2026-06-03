@@ -16,7 +16,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Blocked domains" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="0" Text="{Binding PaneHeader}" FontWeight="SemiBold"/>
                 <Border Grid.Column="1"
                         Background="#553311" CornerRadius="3" Padding="6,1"
                         Visibility="{Binding HasPendingChanges, Converter={StaticResource BoolToVis}}">

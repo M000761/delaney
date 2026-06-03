@@ -28,6 +28,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public string Mac => Device.Mac;
     public string? Ip => Device.Ip;
     public System.DateTimeOffset? LastDhcp => Device.LastDhcp;
+    public DeviceMode Mode => Device.Mode;
+    public bool IsWhitelist => Device.Mode == DeviceMode.Whitelist;
+    public string ModeLabel => Device.Mode == DeviceMode.Whitelist ? "Whitelist" : "Blocklist";
 
     // Router-wide override snapshot, projected onto every row.
     [ObservableProperty]
@@ -87,6 +90,20 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         OnPropertyChanged(nameof(LastDhcp));
     }
 
+    // Used by Refresh round-trip + ToggleMode local-update. Replaces the full
+    // Device record so Name/Mac shifts also propagate (label can change in the
+    // conf), and re-fires Mode-dependent property notifications.
+    public void UpdateFromConfig(Device updated)
+    {
+        Device = updated;
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Ip));
+        OnPropertyChanged(nameof(LastDhcp));
+        OnPropertyChanged(nameof(Mode));
+        OnPropertyChanged(nameof(IsWhitelist));
+        OnPropertyChanged(nameof(ModeLabel));
+    }
+
     public void UpdateOverrideState(string? mode, System.DateTimeOffset? expires)
     {
         OverrideMode = mode;
@@ -118,4 +135,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
 
     [RelayCommand]
     private Task ClearOverrideAsync(CancellationToken ct) => _parent.ClearOverrideFromRowAsync(this, ct);
+
+    [RelayCommand]
+    private Task ToggleModeAsync(CancellationToken ct) => _parent.ToggleDeviceModeAsync(this, ct);
 }

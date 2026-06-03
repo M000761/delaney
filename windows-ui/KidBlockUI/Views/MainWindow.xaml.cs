@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         var macConf = "/config/scripts/kidblock-macs.conf";
         var schedConf = "/config/scripts/kidblock-schedule.conf";
         var domConf = "/config/scripts/kidblock-domains.conf";
+        var allowConf = "/config/scripts/kidblock-allowlist.conf";
 
         var ps1 = TryFindPs1Config();
         if (ps1 is not null)
@@ -117,13 +118,14 @@ public partial class MainWindow : Window
                 using var doc = JsonDocument.Parse(stream);
                 if (doc.RootElement.TryGetProperty("Router", out var r))
                 {
-                    host      = StringProp(r, "Host",             host);
-                    user      = StringProp(r, "User",             user);
-                    key       = StringProp(r, "KeyPath",          key);
-                    script    = StringProp(r, "ScriptPath",       script);
-                    macConf   = StringProp(r, "MacConfPath",      macConf);
-                    schedConf = StringProp(r, "ScheduleConfPath", schedConf);
-                    domConf   = StringProp(r, "DomainsConfPath",  domConf);
+                    host      = StringProp(r, "Host",              host);
+                    user      = StringProp(r, "User",              user);
+                    key       = StringProp(r, "KeyPath",           key);
+                    script    = StringProp(r, "ScriptPath",        script);
+                    macConf   = StringProp(r, "MacConfPath",       macConf);
+                    schedConf = StringProp(r, "ScheduleConfPath",  schedConf);
+                    domConf   = StringProp(r, "DomainsConfPath",   domConf);
+                    allowConf = StringProp(r, "AllowlistConfPath", allowConf);
                 }
             }
             catch (JsonException)
@@ -132,7 +134,7 @@ public partial class MainWindow : Window
             }
         }
 
-        return new RouterConfig(host, user, key, script, macConf, schedConf, domConf);
+        return new RouterConfig(host, user, key, script, macConf, schedConf, domConf, allowConf);
     }
 
     private static string StringProp(JsonElement obj, string name, string fallback)

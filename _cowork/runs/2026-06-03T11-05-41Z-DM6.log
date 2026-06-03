@@ -1,0 +1,27 @@
+[START] sit=DM6 ts=2026-06-03T11:05:41Z preset=ltf-attended-v15-km396 mode=deliberate
+[INFO] head_at_recon=47fe4fc02c983d3cc6d27b025f58efec20aeb4e0 repo=kernel
+[INFO] head_at_recon=7fcb37a069062702b40320f5322dc3e454bf0831 repo=delaney
+[INFO] preset_invoked: ltf-attended
+[INFO] project=delaney mount=C:\CC\delaney dashboard=_cowork/dashboard-delaney.json remote=https://github.com/M000761/delaney.git branch=main
+[INFO] dependsOn_check: DM3=done(77f6b29), DM4=done(cd1bc6c) -- both graduated, deps satisfied
+[INFO] context-tier: mode=deliberate tier=2 (impact=structural surface=mixed cascade=none) -- any tier proceeds
+[GATE] context-tier-gate=proceed
+[GATE] tool-recon=pass tfi-edit=kernel-tools-v1
+[INFO] status-flip: id=DM6, from=proposed, to=inprogress
+[PHASE] start=orient ts=2026-06-03T11:05:41Z
+[INFO] scope_summary: router-side iptables KIDBLOCK_WHITELIST chain (default-DROP per whitelist MAC + ACCEPT-if-in-kidblock_allow ipsets v4/v6) + install-allowlist primitive + per-MAC mode:whitelist parsing in kidblock-macs.conf; UI Device.Mode enum, ConfigParser.ParseMacs token-extension, DomainsViewModel mode-aware swap (loads both confs, toggles active set on selected device's mode), DevicesGrid new Mode toggle column, DomainsControl verb swap (Blocked: -> Allowed:), RouterClient.InstallAllowlistAsync + WriteMacsAsync, README per-device whitelist addendum.
+[INFO] override_allow_semantics: existing override-allow continues to lift KIDBLOCK_TIME (time-based block) for all controlled MACs; KIDBLOCK_WHITELIST remains in effect during override-allow on whitelist devices -- whitelist devices still default-deny + only-allowlist during override-allow window. README documents this as the conservative interpretation of ACCEPTANCE(i); per-MAC override + full-unrestricted-override are scope-out per NO clause and reserved for a follow-up node if surfaced by real friction.
+[INFO] file_list_drift: milestone body referenced `windows-ui/KidBlockUI/Views/DevicesGrid.xaml` but no separate DevicesGrid.xaml exists -- the devices DataGrid lives inline in MainWindow.xaml (the only View hosting devices). Edited MainWindow.xaml directly; no functional impact, just a planning-vs-reality mismatch in the milestone's `files` list.
+[PHASE] start=work ts=2026-06-03T11:05:50Z
+[INFO] router_files_written: router/kidblock.sh (whitelist chain + install-allowlist + per-MAC mode parsing in awk helpers + status panel additions); router/kidblock-allowlist.conf (seed: search/Wikipedia/Google-Workspace/MS365/Khan-Academy/Duolingo/IXL/LE-OCSP, with Cloudfront+YouTube commented as opt-in opt-outs); router/kidblock-macs.conf (header documents trailing mode:whitelist token); router/README.md (new -- per-mode walkthrough + chain diagram + override-allow caveat + 4 whitelist-specific caveats: CDN deps, DoH bypass, first-connect cache race, security-boundary note).
+[INFO] ui_files_written: Models/Device.cs (DeviceMode enum + Mode positional default); Services/ConfigParser.cs (token-based ParseMacs, tolerant of old format + label order; new SerializeMacs round-trip for Mode toggle); Services/DomainsSerializer.cs (mode-aware header + apply-command comment); Services/RouterClient.cs (AllowlistConfPath in RouterConfig + InstallAllowlistAsync + InstallListAsync factoring); ViewModels/DomainsViewModel.cs (dual-mode refactor: two (router, edited) set pairs, EditedSet/RouterSet computed-by-mode, PaneHeader/ActionVerb computed, OnCurrentModeChanged repaints UI without discarding the other slot's pending edits); ViewModels/DeviceRowViewModel.cs (Mode/IsWhitelist/ModeLabel + UpdateFromConfig + ToggleModeCommand); ViewModels/MainViewModel.cs (SelectedDevice ObservableProperty + OnSelectedDeviceChanged pushes Mode to Domains.CurrentMode, dual-load in Refresh with SafeGetAsync for absent allowlist, ApplyDomainsAsync mode-routes to InstallAllowlistAsync/AllowlistConfPath, new ToggleDeviceModeAsync round-trips macs.conf + reapply, restored selection-by-MAC across refresh, status label now shows blocked/allowed counts); Views/DomainsControl.xaml (header bind to PaneHeader); Views/MainWindow.xaml (DataGrid SelectedItem + SelectionMode + new Mode column with toggle button styled by IsWhitelist DataTrigger); Views/MainWindow.xaml.cs (LoadConfig AllowlistConfPath surface + StringProp wire-up); appsettings.json (AllowlistConfPath default).
+[GATE] tfi-edit=pass dashboard-delaney.json
+[GATE] tfi-edit=pass router/kidblock.sh
+[GATE] tfi-edit=pass router/kidblock-allowlist.conf
+[GATE] tfi-edit=pass router/kidblock-macs.conf
+[GATE] scratch-build=pass KidBlockUI.dll 0-warn 0-err (dotnet build -o $env:TEMP\dm6-scratch-86097021)
+[PHASE] start=close ts=2026-06-03T11:11:00Z
+[INFO] sequence_check=no-change
+[INFO] findings_transport=none (per-MAC override-allow scope-gap surfaced in router/README.md "override-allow interaction with whitelist mode" + flagged for Adam in section 4 Next: instead of warm-ingested -- interpretation-dependent + workaround clean, defer to friction-driven proposed node if real use surfaces)
+[INFO] board_after_close=thin-deferred (DM program children empty after DM6 graduates; parent P3/P4 stay proposed per parent-milestone-not-inprogress rule; rolling-wave proposer-pass deferred -- DM domain stable, no fresh frontier needed without explicit Adam ingest)
+

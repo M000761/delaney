@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using KidBlockUI.Models;
 
@@ -5,9 +6,13 @@ namespace KidBlockUI.Services;
 
 public static class ConfigParser
 {
-    private static readonly Regex MacLine = new(
-        @"^\s*([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?:\s+(.+?))?\s*$",
+    private static readonly Regex MacToken = new(
+        @"^[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}$",
         RegexOptions.Compiled);
+
+    private static readonly Regex ModeToken = new(
+        @"^mode:(?<mode>blocklist|whitelist)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex SchedDays = new(
         @"^([A-Za-z*,\-]+)\s+(\d{2}:\d{2}-\d{2}:\d{2})$",
@@ -24,11 +29,33 @@ public static class ConfigParser
         {
             var line = StripComment(raw).Trim();
             if (line.Length == 0) continue;
-            var m = MacLine.Match(line);
-            if (!m.Success) continue;
-            var mac = m.Groups[1].Value.ToLowerInvariant();
-            var name = m.Groups[2].Success ? m.Groups[2].Value.Trim() : string.Empty;
-            devices.Add(new Device(mac, name));
+
+            var tokens = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0) continue;
+            if (!MacToken.IsMatch(tokens[0])) continue;
+            var mac = tokens[0].ToLowerInvariant();
+
+            // Trailing mode:xxx token (DM6) -- token-based so it's order-agnostic with
+            // the label; backwards-compatible with existing macs.conf rows that have no
+            // mode token at all (default = Blocklist).
+            var mode = DeviceMode.Blocklist;
+            var labelEnd = tokens.Length;
+            for (var i = tokens.Length - 1; i >= 1; i--)
+            {
+                var m = ModeToken.Match(tokens[i]);
+                if (!m.Success) continue;
+                mode = m.Groups["mode"].Value.Equals("whitelist", StringComparison.OrdinalIgnoreCase)
+                    ? DeviceMode.Whitelist
+                    : DeviceMode.Blocklist;
+                if (i == labelEnd - 1) labelEnd = i;  // strip trailing mode token from label
+                break;
+            }
+
+            var name = labelEnd > 1
+                ? string.Join(' ', tokens, 1, labelEnd - 1)
+                : string.Empty;
+
+            devices.Add(new Device(mac, name, Mode: mode));
         }
         return devices;
     }
@@ -79,6 +106,61 @@ public static class ConfigParser
             domains.Add(new DomainEntry(line));
         }
         return domains;
+    }
+
+    // Round-trip serializer for kidblock-macs.conf -- preserves the row order and
+    // labels of `original`, but emits each device's Mode as a trailing `mode:xxx`
+    // token (or omits it for the default Blocklist). Used by the UI when the user
+    // toggles a device's Mode column. New devices added to `original` without a
+    // corresponding existing line are appended.
+    public static string SerializeMacs(string original, IReadOnlyList<Device> devices)
+    {
+        var byMac = new Dictionary<string, Device>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in devices) byMac[d.Mac] = d;
+
+        var sb = new StringBuilder();
+        var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in SplitLines(original))
+        {
+            var stripped = StripComment(raw).Trim();
+            if (stripped.Length == 0) { sb.Append(raw); sb.Append('\n'); continue; }
+
+            var tokens = stripped.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0 || !MacToken.IsMatch(tokens[0]))
+            {
+                sb.Append(raw); sb.Append('\n'); continue;
+            }
+            var mac = tokens[0].ToLowerInvariant();
+            if (!byMac.TryGetValue(mac, out var d)) { sb.Append(raw); sb.Append('\n'); continue; }
+
+            // Strip any existing trailing mode token from the line tokens so we can
+            // emit the canonical token (or none, if Blocklist) without duplicating it.
+            var keep = new List<string>(tokens.Length);
+            keep.Add(tokens[0]);
+            for (var i = 1; i < tokens.Length; i++)
+                if (!ModeToken.IsMatch(tokens[i])) keep.Add(tokens[i]);
+
+            sb.Append(string.Join(' ', keep));
+            if (d.Mode == DeviceMode.Whitelist)
+            {
+                sb.Append("   mode:whitelist");
+            }
+            sb.Append('\n');
+            written.Add(mac);
+        }
+
+        // Devices in `devices` that weren't present in `original` get appended (no label).
+        foreach (var d in devices)
+        {
+            if (written.Contains(d.Mac)) continue;
+            sb.Append(d.Mac);
+            if (!string.IsNullOrWhiteSpace(d.Name)) { sb.Append("   "); sb.Append(d.Name); }
+            if (d.Mode == DeviceMode.Whitelist) sb.Append("   mode:whitelist");
+            sb.Append('\n');
+        }
+
+        return sb.ToString();
     }
 
     private static IEnumerable<string> SplitLines(string text)

@@ -13,7 +13,8 @@ public sealed record RouterConfig(
     string ScriptPath,
     string MacConfPath,
     string ScheduleConfPath,
-    string DomainsConfPath);
+    string DomainsConfPath,
+    string AllowlistConfPath = "/config/scripts/kidblock-allowlist.conf");
 
 public sealed record DhcpLease(string Mac, string Ip, System.DateTimeOffset? Expiry, string? Hostname);
 
@@ -74,9 +75,10 @@ public sealed class RouterClient : IDisposable
     public Task<string> GetConfigFileAsync(string remotePath, CancellationToken ct = default)
         => RunAsync($"cat \"{remotePath}\"", ct);
 
-    public string ScheduleConfPath => _config.ScheduleConfPath;
-    public string MacConfPath      => _config.MacConfPath;
-    public string DomainsConfPath  => _config.DomainsConfPath;
+    public string ScheduleConfPath  => _config.ScheduleConfPath;
+    public string MacConfPath       => _config.MacConfPath;
+    public string DomainsConfPath   => _config.DomainsConfPath;
+    public string AllowlistConfPath => _config.AllowlistConfPath;
 
     public Task WriteConfigFileAsync(string remotePath, string content, CancellationToken ct = default) =>
         Task.Run(() =>
@@ -124,13 +126,19 @@ public sealed class RouterClient : IDisposable
         }, ct);
 
     public Task InstallDomainsAsync(CancellationToken ct = default) =>
+        InstallListAsync("install-domains", ct);
+
+    public Task InstallAllowlistAsync(CancellationToken ct = default) =>
+        InstallListAsync("install-allowlist", ct);
+
+    private Task InstallListAsync(string subcommand, CancellationToken ct) =>
         Task.Run(() =>
         {
             var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
             if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
             ct.ThrowIfCancellationRequested();
-            // install-domains restarts dnsmasq, which can take a couple of seconds.
-            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} install-domains");
+            // install-{domains|allowlist} restarts dnsmasq, which can take a couple of seconds.
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} {subcommand}");
             cmd.CommandTimeout = TimeSpan.FromSeconds(30);
             var output = cmd.Execute();
             ct.ThrowIfCancellationRequested();
@@ -138,7 +146,7 @@ public sealed class RouterClient : IDisposable
             {
                 var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
                 throw new InvalidOperationException(
-                    $"kidblock.sh install-domains failed (exit {cmd.ExitStatus}): {err.Trim()}");
+                    $"kidblock.sh {subcommand} failed (exit {cmd.ExitStatus}): {err.Trim()}");
             }
         }, ct);
 
