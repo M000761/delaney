@@ -73,8 +73,8 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Name"       Binding="{Binding Name}" Width="*"/>
                             <DataGridTextColumn Header="MAC"        Binding="{Binding Mac}"  Width="Auto"/>
-                            <DataGridTextColumn Header="Last DHCP"  Binding="{Binding LastDhcp, StringFormat='yyyy-MM-dd HH:mm'}" Width="Auto"/>
-                            <DataGridTextColumn Header="IP"         Binding="{Binding Ip}" Width="Auto"/>
+                            <DataGridTextColumn Header="Last DHCP"  Binding="{Binding LastDhcp, StringFormat='yyyy-MM-dd HH:mm'}" Width="110"/>
+                            <DataGridTextColumn Header="IP"         Binding="{Binding Ip}" Width="130"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

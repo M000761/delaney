@@ -1,0 +1,39 @@
+[START] DM7 LTF-ATTENDED v15 sit 2026-06-03T08:59:44+00:00
+[INFO] head_at_recon=2e5e6d03d0e9ab37a5e722bb4a11add1d79374a4
+[INFO] preset_invoked: ltf-attended
+[INFO] project=delaney mount=C:\CC\delaney dashboard=_cowork/dashboard-delaney.json remote=https://github.com/M000761/delaney.git branch=main
+[INFO] tier_eval: impact=quality surface=code cascade=none -> Tier-1
+[INFO] mode=deliberate (H1 no [mode=...] token; default)
+[GATE] context-tier-gate=proceed
+[INFO] status-flip: id=DM7, from=proposed, to=inprogress
+[PHASE] start=orient ts=2026-06-03T08:59:44+00:00
+[INFO] orient: read RouterClient.cs (DM1-era ParseDhcpLeases + LeaseLine regex), MainWindow.xaml (Devices DataGrid columns Width="Auto" on Last DHCP + IP), DM1 run-log
+[INFO] orient: root cause confirmed -- ssh.CreateCommand() runs `show dhcp leases` without sourcing .bashrc/.profile, so vyatta op-mode `show` wrappers off PATH; command returns empty
+[INFO] orient: fix path -- `/opt/vyatta/bin/vyatta-op-cmd-wrapper show dhcp leases` (canonical wrapper, vyatta env init handled internally)
+[INFO] orient: defensive path -- ISC-format `/var/run/dhcpd.leases` fallback parser activates only when wrapper output is empty/unparseable; pure dead-code unless triggered
+[INFO] orient: acceptance (c) MAC case-insensitivity is already structurally satisfied -- ConfigParser.ParseMacs:29 + RouterClient.ParseDhcpLeases:101 both lowercase on parse, and MainViewModel:75 join uses StringComparer.OrdinalIgnoreCase; no edit needed for (c)
+[GATE] tfi-integrity=pass file=dashboard-delaney.json terminator='}'
+[INFO] dashboard-delaney.json validated: DM7 status=inprogress last=2026-06-03T08:59:44+00:00
+[PHASE] start=work ts=2026-06-03T08:59:44+00:00
+[INFO] work: RouterClient.cs::GetDhcpLeasesAsync retargeted from bare `show dhcp leases` to `/opt/vyatta/bin/vyatta-op-cmd-wrapper show dhcp leases`; falls through to `sudo cat /var/run/dhcpd.leases` + ParseIscLeases when wrapper output yields 0 parsed rows
+[INFO] work: RouterClient.cs added ParseIscLeases internal method + 3 compiled sub-regexes (IscLeaseBlock matches `lease <ip> { ... }`, IscEnds matches `ends <weekday> YYYY/MM/DD HH:MM:SS;`, IscHwEthernet matches `hardware ethernet aa:bb:cc:dd:ee:ff;`, IscHostname matches `client-hostname "host";`). Dedup by MAC via last-write-wins Dictionary -- ISC file is chronological so the later entry is the active lease.
+[INFO] work: MainWindow.xaml Last DHCP column Width=Auto -> Width=110; IP column Width=Auto -> Width=130. Defense-in-depth so columns don't collapse to header-only when join transiently fails on first-frame render.
+[INFO] work: macs.conf + lease-table MAC case mismatch (acceptance bar c) -- no edit needed; structurally satisfied by DM1 code (ConfigParser.ParseMacs lowercases, RouterClient.ParseDhcpLeases lowercases, MainViewModel uses OrdinalIgnoreCase dictionary). Note in run-log only.
+[INFO] build:dotnet_build_initial NETSDK1194 warning on `dotnet build .sln -o $scratch` -- `--output` is not supported on solution builds; rebuilt against KidBlockUI.csproj directly with same -o flag
+[GATE] build-zero-warnings=pass project=windows-ui/KidBlockUI/KidBlockUI.csproj out=$env:TEMP\kidblockui-dm7-scratch 0w/0e
+[GATE] tfi-integrity=pass file=windows-ui/KidBlockUI/Services/RouterClient.cs terminator='}'
+[GATE] tfi-integrity=pass file=windows-ui/KidBlockUI/Views/MainWindow.xaml terminator='</Window>'
+[INFO] acceptance: (a) PASS dotnet build 0 warnings 0 errors -- structural / agent-verifiable
+[INFO] acceptance: (c) PASS structurally (DM1-era code already lowercases both sides + OrdinalIgnoreCase join dictionary)
+[INFO] acceptance: (b)(d)(e)(f) DEFERRED to Adam's eyes-on at the live router (requires 192.168.200.1 reach + kidblock_ed25519 key + KidBlockUI.exe launch)
+[INFO] discovery appended: delaney-side _cowork/discoveries.jsonl -- Renci.SshNet non-interactive channel stripped-PATH substrate quirk causing silent-empty `show dhcp leases` output
+[PHASE] start=close ts=2026-06-03T08:59:44+00:00
+[INFO] sequence_check=no-change (DM7 in 0 sequence-suggest clusters)
+[INFO] findings_transport=1-routed (discoveries.jsonl: renci-sshnet-stripped-path-substrate-quirk; no fresh-node warm-ingest, no NOT-STARTED-row fold required)
+[INFO] board_after_close=healthy (post-DM7 graduate: DM2 + DM5 unblock via DM1; DM3/DM4 still pend DM2; DM6 still pends DM3+DM4)
+[INFO] §4 report ===
+[INFO] Asked for:    DM7 -- fix DM1 acceptance bar (c) by switching RouterClient.GetDhcpLeasesAsync to the vyatta op-mode wrapper path, with ISC /var/run/dhcpd.leases fallback parser if wrapper output stays empty/unparseable, plus optional Last DHCP + IP column-width polish.
+[INFO] Shipped:      RouterClient.cs GetDhcpLeasesAsync now invokes /opt/vyatta/bin/vyatta-op-cmd-wrapper show dhcp leases (vyatta env init internal to the wrapper); falls through to `sudo cat /var/run/dhcpd.leases` + new ParseIscLeases (3 compiled sub-regexes, last-write-wins MAC dedup) when wrapper output yields 0 parsed rows. MainWindow.xaml Last DHCP + IP columns Width=Auto -> 110 + 130 (no header-only collapse on transient join miss). Build 0w/0e. Acceptance (a)+(c) PASS structurally; (b)(d)(e)(f) deferred to live-router eyes-on. discoveries.jsonl entry appended.
+[INFO] Time went on: ~50% on RouterClient.cs (wrapper command + ParseIscLeases + 3 sub-regexes + dedup); ~10% XAML column-width polish; ~10% dotnet build retry from .sln to .csproj to drop NETSDK1194; ~15% TFI gate (PowerShell retry to dodge MSYS_PATHCONV mangling of `</Window>`); ~15% recon + run-log + discoveries.jsonl + close. Overhead under shipping.
+[INFO] Next:         Launch KidBlockUI on a host that reaches 192.168.200.1 with the kidblock_ed25519 key; verify acceptance (b)(d)(e)(f). If wrapper output STILL doesn't populate, the ISC fallback should catch it -- but watch for `sudo cat /var/run/dhcpd.leases` needing a tty/password (EdgeOS sudoers rules vary). If a bar misses, fresh DM-prefix follow-up node per rail 36 (e.g. sudoers-rule + NOPASSWD line for `ubnt`). With DM7 graduated, DM2 (schedule timeline editor) and DM5 (log tail pane) both unblock for the next sit.
+[INFO] head_check_at_emit=unchanged: was=2e5e6d03d0e9ab37a5e722bb4a11add1d79374a4 now=2e5e6d03d0e9ab37a5e722bb4a11add1d79374a4

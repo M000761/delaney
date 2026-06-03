@@ -61,8 +61,12 @@ public sealed class RouterClient : IDisposable
 
     public async Task<IReadOnlyList<DhcpLease>> GetDhcpLeasesAsync(CancellationToken ct = default)
     {
-        var text = await RunAsync("show dhcp leases", ct).ConfigureAwait(false);
-        return ParseDhcpLeases(text);
+        var text = await RunAsync("/opt/vyatta/bin/vyatta-op-cmd-wrapper show dhcp leases", ct).ConfigureAwait(false);
+        var leases = ParseDhcpLeases(text);
+        if (leases.Count > 0) return leases;
+
+        var isc = await RunAsync("sudo cat /var/run/dhcpd.leases", ct).ConfigureAwait(false);
+        return ParseIscLeases(isc);
     }
 
     public Task<string> GetConfigFileAsync(string remotePath, CancellationToken ct = default)
@@ -107,6 +111,57 @@ public sealed class RouterClient : IDisposable
             rows.Add(new DhcpLease(mac, ip, expiry, host));
         }
         return rows;
+    }
+
+    private static readonly Regex IscLeaseBlock = new(
+        @"lease\s+(?<ip>\d{1,3}(?:\.\d{1,3}){3})\s*\{(?<body>[^{}]*)\}",
+        RegexOptions.Compiled);
+
+    private static readonly Regex IscEnds = new(
+        @"ends\s+\d+\s+(?<ends>\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s*;",
+        RegexOptions.Compiled);
+
+    private static readonly Regex IscHwEthernet = new(
+        @"hardware\s+ethernet\s+(?<mac>[0-9a-fA-F:]{17})\s*;",
+        RegexOptions.Compiled);
+
+    private static readonly Regex IscHostname = new(
+        @"client-hostname\s+""(?<host>[^""]*)""\s*;",
+        RegexOptions.Compiled);
+
+    internal static IReadOnlyList<DhcpLease> ParseIscLeases(string text)
+    {
+        var byMac = new Dictionary<string, DhcpLease>();
+        if (string.IsNullOrWhiteSpace(text)) return new List<DhcpLease>();
+
+        foreach (Match block in IscLeaseBlock.Matches(text))
+        {
+            var body = block.Groups["body"].Value;
+
+            var hw = IscHwEthernet.Match(body);
+            if (!hw.Success) continue;
+            var mac = hw.Groups["mac"].Value.ToLowerInvariant();
+            var ip = block.Groups["ip"].Value;
+
+            System.DateTimeOffset? expiry = null;
+            var ends = IscEnds.Match(body);
+            if (ends.Success && System.DateTimeOffset.TryParseExact(
+                ends.Groups["ends"].Value,
+                "yyyy/MM/dd HH:mm:ss",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal,
+                out var parsed))
+            {
+                expiry = parsed;
+            }
+
+            string? host = null;
+            var hn = IscHostname.Match(body);
+            if (hn.Success) host = hn.Groups["host"].Value;
+
+            byMac[mac] = new DhcpLease(mac, ip, expiry, host);
+        }
+        return new List<DhcpLease>(byMac.Values);
     }
 
     private static readonly Regex RxCurrentApplied = new(
