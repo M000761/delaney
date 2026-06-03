@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using KidBlockUI.Models;
 using Renci.SshNet;
@@ -71,6 +72,55 @@ public sealed class RouterClient : IDisposable
 
     public Task<string> GetConfigFileAsync(string remotePath, CancellationToken ct = default)
         => RunAsync($"cat \"{remotePath}\"", ct);
+
+    public string ScheduleConfPath => _config.ScheduleConfPath;
+    public string MacConfPath      => _config.MacConfPath;
+    public string DomainsConfPath  => _config.DomainsConfPath;
+
+    public Task WriteConfigFileAsync(string remotePath, string content, CancellationToken ct = default) =>
+        Task.Run(() =>
+        {
+            var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+            if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+            ct.ThrowIfCancellationRequested();
+
+            var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
+            // base64-encoded payload sidesteps any quoting / newline / special-char issues.
+            // The shell command base64-decodes into the destination atomically via a temp file + mv.
+            var command =
+                $"tmp=$(mktemp \"{remotePath}.XXXXXX\") && " +
+                $"echo {b64} | base64 -d > \"$tmp\" && " +
+                $"mv \"$tmp\" \"{remotePath}\"";
+
+            using var cmd = ssh.CreateCommand(command);
+            cmd.CommandTimeout = TimeSpan.FromSeconds(15);
+            var output = cmd.Execute();
+            ct.ThrowIfCancellationRequested();
+            if (cmd.ExitStatus != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
+                throw new InvalidOperationException(
+                    $"Remote write failed (exit {cmd.ExitStatus}) on {remotePath}: {err.Trim()}");
+            }
+        }, ct);
+
+    public Task ReapplyAsync(CancellationToken ct = default) =>
+        Task.Run(() =>
+        {
+            var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+            if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+            ct.ThrowIfCancellationRequested();
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} reapply");
+            cmd.CommandTimeout = TimeSpan.FromSeconds(15);
+            var output = cmd.Execute();
+            ct.ThrowIfCancellationRequested();
+            if (cmd.ExitStatus != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
+                throw new InvalidOperationException(
+                    $"kidblock.sh reapply failed (exit {cmd.ExitStatus}): {err.Trim()}");
+            }
+        }, ct);
 
     public async Task<RouterState> GetStatusAsync(CancellationToken ct = default)
     {

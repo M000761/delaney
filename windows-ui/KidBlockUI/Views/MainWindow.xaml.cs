@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
+using KidBlockUI.Models;
 using KidBlockUI.Services;
 using KidBlockUI.ViewModels;
 
@@ -28,6 +29,17 @@ public partial class MainWindow : Window
             UpdateConnDot();
             await _vm.RefreshCommand.ExecuteAsync(null);
         };
+    }
+
+    private async void ApplySchedule_Click(object sender, RoutedEventArgs e)
+    {
+        await _vm.ApplyScheduleAsync(diff =>
+            ApplyConfirmDialog.Show(this, "Apply schedule changes?", diff));
+    }
+
+    private void DiscardSchedule_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.Schedule.Discard();
     }
 
     private void UpdateConnDot()

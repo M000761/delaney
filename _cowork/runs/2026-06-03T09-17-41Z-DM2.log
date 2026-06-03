@@ -1,0 +1,30 @@
+[START] DM2 -- Schedule timeline custom Canvas + Apply-with-diff (replaces Edit-Schedule.ps1)
+[INFO] head_at_recon=980c2307ab0fb0dd59346c3bb8487b08d4fc0047
+[INFO] preset_invoked: ltf-attended
+[GATE] context-tier-gate=proceed
+[INFO] tier=1 (impact=quality, surface=ui, cascade=none) mode=deliberate
+[INFO] status-flip: id=DM2, from=proposed, to=inprogress
+[PHASE] start=orient ts=2026-06-03T09:17:41+00:00
+[GATE] tfi-edit-dashboard-delaney=ok cost_ms=20
+[INFO] recon: kidblock.sh has no install-schedule primitive; DM2 prompt's reference to it is aspirational. Decision: skip router change (keep files list tight); UI Apply uses scp + kidblock.sh reapply matching Edit-Schedule.ps1 pattern. Client-side serializer constructs HH:MM-HH:MM programmatically (no fat-finger class possible). Scp's temp-then-rename gives atomic-swap semantics.
+[PHASE] start=work ts=2026-06-03T09:20:00+00:00
+[INFO] created: windows-ui/KidBlockUI/Services/ScheduleSerializer.cs (programmatic HH:MM-HH:MM serializer; eliminates fat-finger class structurally)
+[INFO] created: windows-ui/KidBlockUI/Models/DiffLine.cs (DiffKind + DiffLine record; contract for shared ApplyConfirmDialog)
+[INFO] cleanup_cap: Models/DiffLine.cs is the contract for ApplyConfirmDialog (sit-relevant; ApplyConfirmDialog is the named in-list deliverable)
+[INFO] created: windows-ui/KidBlockUI/Views/ApplyConfirmDialog.xaml + .cs (shared diff dialog; reused by DM3 KILL confirm + DM4 domain Apply; no schedule-specific code)
+[INFO] created: windows-ui/KidBlockUI/Views/ScheduleTimeline.xaml + .cs (24h horizontal Canvas; drag body / edges; click-empty-add; right-click-delete; double-click-precise; snap-5; now-tick via 30s DispatcherTimer; override overlay)
+[INFO] created: windows-ui/KidBlockUI/Views/ScheduleEditDialog.xaml + .cs (precise HH:MM dialog — HOW step 3.5 mandated; off-list)
+[INFO] cleanup_cap: Views/ScheduleEditDialog.xaml + .cs cover HOW step 3 sub-requirement "Double-click rectangle = open precise HH:MM start/end dialog" (trivial: HH:MM regex + days regex + Result property)
+[INFO] created: windows-ui/KidBlockUI/ViewModels/ScheduleViewModel.cs (Schedule + EditedSchedule ObservableCollections; PendingChangeCount via diff; modify-pair heuristic for diff readability; Discard + AcceptAsRouterState)
+[INFO] modified: windows-ui/KidBlockUI/Services/RouterClient.cs (added WriteConfigFileAsync via base64-encoded SSH command + atomic mv; added ReapplyAsync; exposed ScheduleConfPath / MacConfPath / DomainsConfPath)
+[INFO] modified: windows-ui/KidBlockUI/ViewModels/MainViewModel.cs (Schedule field switched from ObservableCollection<ScheduleWindow> to ScheduleViewModel; RefreshAsync now also fetches RouterState to wire Schedule.OverrideActive; new ApplyScheduleAsync orchestrates serialize/upload/reapply/poll-verify/accept-or-error)
+[INFO] cleanup_cap: ViewModels/MainViewModel.cs + Views/MainWindow.xaml + Views/MainWindow.xaml.cs — integration touches; off-list but unavoidable to wire the in-list deliverables into the existing DM1 shell
+[INFO] modified: windows-ui/KidBlockUI/Views/MainWindow.xaml (center pane: ListBox replaced with ScheduleTimeline + Apply/Discard button row + pending-changes badge bound to Schedule.PendingChangeCount)
+[INFO] modified: windows-ui/KidBlockUI/Views/MainWindow.xaml.cs (ApplySchedule_Click + DiscardSchedule_Click handlers; Apply passes ApplyConfirmDialog.Show lambda as confirm callback to MainViewModel.ApplyScheduleAsync)
+[INFO] decision: skip router-side install-schedule primitive (prompt referenced as existing; it isn't, and adding it would expand sit scope to router/kidblock.sh). Existing scp+reapply pattern matches Edit-Schedule.ps1 (acceptance bar h satisfied). Validation lives in serializer (programmatic HH:MM output; no fat-finger class possible from UI input).
+[GATE] dotnet-build=ok cost_ms=1370
+[PHASE] start=close ts=2026-06-03T09:30:00+00:00
+[INFO] sequence_check=no-change
+[INFO] findings_transport=none
+[INFO] board_after_close=healthy
+[END] outcome=success

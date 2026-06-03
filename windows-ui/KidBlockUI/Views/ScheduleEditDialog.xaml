@@ -1,0 +1,51 @@
+<Window x:Class="KidBlockUI.Views.ScheduleEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit block window"
+        Width="360" Height="220"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Background="#1E1E1E"
+        Foreground="#DDDDDD"
+        FontFamily="Segoe UI">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Days:" VerticalAlignment="Center" Margin="0,4"/>
+        <TextBox  Grid.Row="0" Grid.Column="1" x:Name="DaysBox" Margin="8,4"
+                  ToolTip="* / mon / mon-thu / sat,sun"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Start (HH:MM):" VerticalAlignment="Center" Margin="0,4"/>
+        <TextBox  Grid.Row="1" Grid.Column="1" x:Name="StartBox" Margin="8,4"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="End (HH:MM):" VerticalAlignment="Center" Margin="0,4"/>
+        <TextBox  Grid.Row="2" Grid.Column="1" x:Name="EndBox" Margin="8,4"
+                  ToolTip="Use 24:00 for midnight"/>
+
+        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                   x:Name="ErrorText"
+                   Foreground="#E06060" Margin="0,8,0,0"
+                   TextWrapping="Wrap"/>
+
+        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+                    Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="CancelButton" Content="Cancel" Padding="14,4" Margin="0,0,8,0"
+                    IsCancel="True" Click="CancelButton_Click"/>
+            <Button x:Name="OkButton" Content="OK" Padding="14,4"
+                    IsDefault="True" Click="OkButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

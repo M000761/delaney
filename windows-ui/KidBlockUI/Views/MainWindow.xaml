@@ -1,6 +1,7 @@
 <Window x:Class="KidBlockUI.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:KidBlockUI.Views"
         Title="KidBlock"
         Height="640" Width="1180"
         Background="#1E1E1E"
@@ -11,6 +12,7 @@
         <SolidColorBrush x:Key="PaneHeaderBg"  Color="#2D2D30"/>
         <SolidColorBrush x:Key="BorderSubtle"  Color="#3F3F46"/>
         <SolidColorBrush x:Key="MutedText"     Color="#AAAAAA"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -84,17 +86,51 @@
                     BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
-                        <TextBlock Text="Schedule (block windows)" FontWeight="SemiBold"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Schedule (block windows)" FontWeight="SemiBold"/>
+                            <Border Grid.Column="1"
+                                    Background="#553311"
+                                    CornerRadius="3"
+                                    Padding="6,1"
+                                    Visibility="{Binding Schedule.HasPendingChanges, Converter={StaticResource BoolToVis}}">
+                                <TextBlock>
+                                    <Run Text="● "/>
+                                    <Run Text="{Binding Schedule.PendingChangeCount, Mode=OneWay}"/>
+                                    <Run Text=" pending"/>
+                                </TextBlock>
+                            </Border>
+                        </Grid>
                     </Border>
-                    <ListBox ItemsSource="{Binding Schedule}"
-                             Background="Transparent" Foreground="#DDDDDD"
-                             BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Raw}" FontFamily="Consolas" Padding="6,2"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+
+                    <Border DockPanel.Dock="Bottom" Padding="10,6"
+                            BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="Discard"
+                                        Padding="14,4" Margin="0,0,8,0"
+                                        Click="DiscardSchedule_Click"
+                                        IsEnabled="{Binding Schedule.HasPendingChanges}"/>
+                                <Button Content="Apply"
+                                        Padding="14,4"
+                                        Click="ApplySchedule_Click"
+                                        IsEnabled="{Binding Schedule.HasPendingChanges}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Schedule.ApplyError}"
+                                       Foreground="#FF8080"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,0,8,0"/>
+                        </DockPanel>
+                    </Border>
+
+                    <v:ScheduleTimeline x:Name="Timeline"
+                                        EditedSchedule="{Binding Schedule.EditedSchedule}"
+                                        OverrideActive="{Binding Schedule.OverrideActive}"
+                                        Margin="6"/>
                 </DockPanel>
             </Border>
 
