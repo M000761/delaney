@@ -22,7 +22,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<DeviceRowViewModel> Devices { get; } = new();
     public ScheduleViewModel Schedule { get; } = new();
-    public ObservableCollection<DomainEntry> Domains { get; } = new();
+    public DomainsViewModel Domains { get; } = new();
 
     [ObservableProperty]
     private ConnectionState _connectionStatus = ConnectionState.Disconnected;
@@ -176,12 +176,11 @@ public sealed partial class MainViewModel : ObservableObject
             Schedule.LoadFromRouter(windows);
             Schedule.OverrideActive = !string.IsNullOrEmpty(state.OverrideMode);
 
-            Domains.Clear();
-            foreach (var d in domains) Domains.Add(d);
+            Domains.LoadFromRouter(domains);
 
             LastRefresh = System.DateTimeOffset.Now;
             StatusLabel = $"Last refresh {LastRefresh:HH:mm:ss} -- " +
-                          $"{Devices.Count} devices / {Schedule.Schedule.Count} windows / {Domains.Count} domains";
+                          $"{Devices.Count} devices / {Schedule.Schedule.Count} windows / {Domains.Domains.Count} domains";
         }
         catch (OperationCanceledException)
         {
@@ -196,6 +195,65 @@ public sealed partial class MainViewModel : ObservableObject
                 : $"Disconnected -- {ex.Message}";
             try { _client?.Dispose(); } catch { /* ignore */ }
             _client = null;
+        }
+    }
+
+    public async Task ApplyDomainsAsync(Func<IReadOnlyList<DiffLine>, bool> confirm, CancellationToken ct = default)
+    {
+        if (!Domains.HasPendingChanges) return;
+        if (_client is null || !_client.IsConnected)
+        {
+            Domains.ApplyError = "Not connected. Click Refresh first.";
+            return;
+        }
+        var diff = Domains.ComputeDiff();
+        if (diff.Count == 0) return;
+        if (!confirm(diff)) return;
+
+        Domains.ApplyError = null;
+        Domains.IsApplying = true;
+        try
+        {
+            var content = Domains.SerializeEdited();
+            await _client.WriteConfigFileAsync(_config.DomainsConfPath, content, ct).ConfigureAwait(true);
+            await _client.InstallDomainsAsync(ct).ConfigureAwait(true);
+
+            // Poll-verify within 5s: read back, parse, compare against EditedDomains.
+            // install-domains restarts dnsmasq so allow a wider retry window than schedule's reapply.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            var verified = false;
+            while (DateTime.UtcNow < deadline)
+            {
+                ct.ThrowIfCancellationRequested();
+                var text = await _client.GetConfigFileAsync(_config.DomainsConfPath, ct).ConfigureAwait(true);
+                var remoteParsed = ConfigParser.ParseDomains(text);
+                if (Domains.MatchesRouter(remoteParsed)) { verified = true; break; }
+                await Task.Delay(500, ct).ConfigureAwait(true);
+            }
+
+            if (verified)
+            {
+                Domains.AcceptAsRouterState();
+            }
+            else
+            {
+                Domains.ApplyError =
+                    "Domains pushed but post-verify mismatched router state. " +
+                    "Edited view restored to last-known router state. Click Refresh to reload.";
+                Domains.Discard();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // user-cancelled
+        }
+        catch (Exception ex)
+        {
+            Domains.ApplyError = $"Apply failed: {ex.Message}";
+        }
+        finally
+        {
+            Domains.IsApplying = false;
         }
     }
 

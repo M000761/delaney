@@ -122,6 +122,25 @@ public sealed class RouterClient : IDisposable
             }
         }, ct);
 
+    public Task InstallDomainsAsync(CancellationToken ct = default) =>
+        Task.Run(() =>
+        {
+            var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+            if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+            ct.ThrowIfCancellationRequested();
+            // install-domains restarts dnsmasq, which can take a couple of seconds.
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} install-domains");
+            cmd.CommandTimeout = TimeSpan.FromSeconds(30);
+            var output = cmd.Execute();
+            ct.ThrowIfCancellationRequested();
+            if (cmd.ExitStatus != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
+                throw new InvalidOperationException(
+                    $"kidblock.sh install-domains failed (exit {cmd.ExitStatus}): {err.Trim()}");
+            }
+        }, ct);
+
     public Task OverrideBlockAsync(int minutes, CancellationToken ct = default) =>
         RunOverrideAsync("override-block", minutes, ct);
 

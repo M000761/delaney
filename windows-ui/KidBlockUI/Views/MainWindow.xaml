@@ -218,20 +218,7 @@
             </Border>
 
             <Border Grid.Column="2" Background="{StaticResource PaneBg}">
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
-                        <TextBlock Text="Blocked domains" FontWeight="SemiBold"/>
-                    </Border>
-                    <ListBox ItemsSource="{Binding Domains}"
-                             Background="Transparent" Foreground="#DDDDDD"
-                             BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Domain}" FontFamily="Consolas" Padding="6,1"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
+                <v:DomainsControl DataContext="{Binding Domains}"/>
             </Border>
         </Grid>
 

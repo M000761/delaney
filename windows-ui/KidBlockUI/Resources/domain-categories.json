@@ -1,0 +1,34 @@
+{
+  "_note": "Category -> domain-pattern map for the KidBlockUI right-pane categorized toggles (DM4). Literal-string match against entries in kidblock-domains.conf. Edit to extend; restart UI to reload. dnsmasq's ipset directive matches subdomains automatically so listing the bare apex domain is enough.",
+  "categories": {
+    "YouTube": [
+      "youtube.com",
+      "youtu.be",
+      "youtube-nocookie.com",
+      "googlevideo.com",
+      "ytimg.com",
+      "youtubei.googleapis.com"
+    ],
+    "Social Media": [
+      "instagram.com",
+      "tiktok.com",
+      "snapchat.com",
+      "x.com",
+      "twitter.com",
+      "facebook.com"
+    ],
+    "Gaming": [
+      "roblox.com",
+      "fortnite.com",
+      "ea.com",
+      "epicgames.com",
+      "steampowered.com"
+    ],
+    "DoH Endpoints": [
+      "dns.google",
+      "cloudflare-dns.com",
+      "doh.opendns.com",
+      "mozilla.cloudflare-dns.com"
+    ]
+  }
+}
