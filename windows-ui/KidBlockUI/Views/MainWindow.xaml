@@ -17,16 +17,10 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <v:InvertBoolConverter        x:Key="InvertBool"/>
     </Window.Resources>
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*" MinHeight="200"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="220" MinHeight="80"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="{StaticResource PaneHeaderBg}" Padding="10,6"
+    <DockPanel LastChildFill="True">
+
+        <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,6"
                 BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -50,15 +44,24 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource PaneHeaderBg}" Padding="10,4"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
+            <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource MutedText}"/>
+        </Border>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" MinHeight="160"/>
+                <RowDefinition Height="*" MinHeight="160"/>
+                <RowDefinition Height="200" MinHeight="80"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="30*"/>
-                <ColumnDefinition Width="40*"/>
-                <ColumnDefinition Width="30*"/>
+                <ColumnDefinition Width="*" MinWidth="780"/>
+                <ColumnDefinition Width="280" MinWidth="220"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="{StaticResource PaneBg}"
-                    BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+            <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource PaneBg}"
+                    BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,1">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
                         <TextBlock Text="Devices" FontWeight="SemiBold"/>
@@ -81,10 +84,10 @@
                               BorderThickness="0"
                               RowHeight="48">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Name"       Binding="{Binding Name}" Width="*"/>
-                            <DataGridTextColumn Header="MAC"        Binding="{Binding Mac}"  Width="Auto"/>
-                            <DataGridTextColumn Header="IP"         Binding="{Binding Ip}" Width="120"/>
-                            <DataGridTemplateColumn Header="Mode" Width="110">
+                            <DataGridTextColumn Header="Name"       Binding="{Binding Name}" Width="Auto" MinWidth="80"/>
+                            <DataGridTextColumn Header="MAC"        Binding="{Binding Mac}"  Width="Auto" MinWidth="150"/>
+                            <DataGridTextColumn Header="IP"         Binding="{Binding Ip}"   Width="Auto" MinWidth="120"/>
+                            <DataGridTemplateColumn Header="Mode" Width="Auto" MinWidth="90">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Button Content="{Binding ModeLabel}"
@@ -111,7 +114,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Override" Width="170">
+                            <DataGridTemplateColumn Header="Override" Width="Auto" MinWidth="180">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Background="{Binding OverrideBadgeBackground}"
@@ -125,7 +128,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Actions" Width="240">
+                            <DataGridTemplateColumn Header="Actions" Width="Auto" MinWidth="160">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Grid>
@@ -192,13 +195,13 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Last DHCP"  Binding="{Binding LastDhcp, StringFormat='yyyy-MM-dd HH:mm'}" Width="110"/>
+                            <DataGridTextColumn Header="Last DHCP"  Binding="{Binding LastDhcp, StringFormat='yyyy-MM-dd HH:mm'}" Width="*" MinWidth="110"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
             </Border>
 
-            <Border Grid.Column="1" Background="{StaticResource PaneBg}"
+            <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PaneBg}"
                     BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
@@ -250,22 +253,12 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Column="2" Background="{StaticResource PaneBg}">
+            <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Background="{StaticResource PaneBg}">
                 <v:DomainsControl DataContext="{Binding Domains}"/>
             </Border>
+
+            <v:LogTailPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                            DataContext="{Binding LogTail}"/>
         </Grid>
-
-        <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
-                      VerticalAlignment="Center" Background="{StaticResource BorderSubtle}"
-                      ResizeBehavior="PreviousAndNext"
-                      ResizeDirection="Rows"
-                      ShowsPreview="False"/>
-
-        <v:LogTailPanel Grid.Row="3" DataContext="{Binding LogTail}"/>
-
-        <Border Grid.Row="4" Background="{StaticResource PaneHeaderBg}" Padding="10,4"
-                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
-            <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource MutedText}"/>
-        </Border>
-    </Grid>
+    </DockPanel>
 </Window>

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -25,12 +26,15 @@ public partial class ScheduleTimeline : UserControl
     private static readonly SolidColorBrush OverrideOverlay =
         new(Color.FromArgb(0x44, 0xFF, 0xC8, 0x33));
     private static readonly SolidColorBrush HourTickBrush = new(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
+    private static readonly SolidColorBrush RowSeparatorBrush = new(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
     private static readonly SolidColorBrush LabelBrush    = new(Color.FromRgb(0xAA, 0xAA, 0xAA));
 
     private readonly DispatcherTimer _nowTimer;
     private Line? _nowLine;
     private Rectangle? _overrideOverlayRect;
     private bool _overrideActive;
+
+    private readonly List<string> _profileOrder = new();
 
     private enum DragMode { None, Move, ResizeStart, ResizeEnd }
     private DragMode _dragMode = DragMode.None;
@@ -98,14 +102,26 @@ public partial class ScheduleTimeline : UserControl
 
     private void HourAxis_SizeChanged(object sender, SizeChangedEventArgs e) => RebuildHourLabels();
 
+    private void ProfileLabels_SizeChanged(object sender, SizeChangedEventArgs e) => RebuildProfileLabels();
+
     private void Rebuild()
     {
         TimelineCanvas.Children.Clear();
         if (TimelineCanvas.ActualWidth <= 0 || TimelineCanvas.ActualHeight <= 0) return;
 
-        // Hour grid lines
+        _profileOrder.Clear();
+        if (EditedSchedule != null)
+        {
+            foreach (var w in EditedSchedule)
+                if (!_profileOrder.Contains(w.Days))
+                    _profileOrder.Add(w.Days);
+        }
+        var rowCount = Math.Max(1, _profileOrder.Count);
+        var rowHeight = TimelineCanvas.ActualHeight / rowCount;
+
         var width = TimelineCanvas.ActualWidth;
         var height = TimelineCanvas.ActualHeight;
+
         for (var h = 0; h <= 24; h++)
         {
             var x = h / 24.0 * width;
@@ -120,44 +136,47 @@ public partial class ScheduleTimeline : UserControl
             TimelineCanvas.Children.Add(line);
         }
 
-        // Block-window rectangles
+        for (var r = 1; r < rowCount; r++)
+        {
+            var y = r * rowHeight;
+            var line = new Line
+            {
+                X1 = 0, X2 = width, Y1 = y, Y2 = y,
+                Stroke = RowSeparatorBrush,
+                StrokeThickness = 0.5,
+                SnapsToDevicePixels = true,
+                IsHitTestVisible = false,
+            };
+            TimelineCanvas.Children.Add(line);
+        }
+
         if (EditedSchedule != null)
         {
             for (var i = 0; i < EditedSchedule.Count; i++)
             {
                 var w = EditedSchedule[i];
-                var rect = MakeBlockRect(w, i, width, height);
+                var rowIdx = _profileOrder.IndexOf(w.Days);
+                if (rowIdx < 0) rowIdx = 0;
+                var rect = MakeBlockRect(w, i, width, rowIdx * rowHeight, rowHeight);
                 TimelineCanvas.Children.Add(rect);
-
-                if (w.Days != "*")
-                {
-                    var label = new TextBlock
-                    {
-                        Text = w.Days,
-                        Foreground = Brushes.White,
-                        FontSize = 10,
-                        IsHitTestVisible = false,
-                    };
-                    Canvas.SetLeft(label, w.StartMin / 1440.0 * width + 4);
-                    Canvas.SetTop(label, 4);
-                    TimelineCanvas.Children.Add(label);
-                }
             }
         }
 
         RedrawOverrideOverlay();
         RedrawNowMarker();
         RebuildHourLabels();
+        RebuildProfileLabels();
     }
 
-    private Rectangle MakeBlockRect(ScheduleWindow w, int index, double width, double height)
+    private Rectangle MakeBlockRect(ScheduleWindow w, int index, double width, double rowTop, double rowHeight)
     {
         var x = w.StartMin / 1440.0 * width;
         var rectWidth = Math.Max(1.0, (w.EndMin - w.StartMin) / 1440.0 * width);
+        var rectHeight = Math.Max(1.0, rowHeight - 2);
         var rect = new Rectangle
         {
             Width = rectWidth,
-            Height = height,
+            Height = rectHeight,
             Fill = BlockFill,
             Stroke = BlockStroke,
             StrokeThickness = 1.0,
@@ -167,7 +186,7 @@ public partial class ScheduleTimeline : UserControl
                       + (w.Days == "*" ? string.Empty : $"  ({w.Days})"),
         };
         Canvas.SetLeft(rect, x);
-        Canvas.SetTop(rect, 0);
+        Canvas.SetTop(rect, rowTop + 1);
         rect.MouseLeftButtonDown += Rect_MouseLeftButtonDown;
         rect.MouseMove           += Rect_MouseMove;
         rect.MouseLeftButtonUp   += Rect_MouseLeftButtonUp;
@@ -235,6 +254,31 @@ public partial class ScheduleTimeline : UserControl
             Canvas.SetLeft(label, Math.Max(0, x - label.DesiredSize.Width / 2));
             Canvas.SetTop(label, 3);
             HourAxis.Children.Add(label);
+        }
+    }
+
+    private void RebuildProfileLabels()
+    {
+        ProfileLabels.Children.Clear();
+        if (ProfileLabels.ActualWidth <= 0 || ProfileLabels.ActualHeight <= 0) return;
+        var rowCount = Math.Max(1, _profileOrder.Count);
+        var rowHeight = ProfileLabels.ActualHeight / rowCount;
+        for (var i = 0; i < rowCount; i++)
+        {
+            var labelText = i < _profileOrder.Count ? _profileOrder[i] : "*";
+            var label = new TextBlock
+            {
+                Text = labelText,
+                Foreground = LabelBrush,
+                FontSize = 11,
+                FontFamily = new FontFamily("Consolas"),
+                TextAlignment = TextAlignment.Center,
+                Width = ProfileLabels.ActualWidth,
+            };
+            label.Measure(new Size(ProfileLabels.ActualWidth, double.PositiveInfinity));
+            Canvas.SetLeft(label, 0);
+            Canvas.SetTop(label, i * rowHeight + Math.Max(0, (rowHeight - label.DesiredSize.Height) / 2));
+            ProfileLabels.Children.Add(label);
         }
     }
 
