@@ -51,6 +51,7 @@
 
         <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto" MinHeight="160"/>
                 <RowDefinition Height="*" MinHeight="160"/>
                 <RowDefinition Height="200" MinHeight="80"/>
@@ -60,7 +61,9 @@
                 <ColumnDefinition Width="280" MinWidth="220"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource PaneBg}"
+            <v:BulkActionBar Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"/>
+
+            <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PaneBg}"
                     BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,1">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
@@ -144,21 +147,21 @@
                                                         FontWeight="Bold" FontSize="13"
                                                         Padding="14,4" Margin="0,0,4,0"
                                                         BorderBrush="#801818" BorderThickness="1"
-                                                        ToolTip="Block ALL controlled devices for up to 24h (router-wide override; clear to release sooner)"/>
+                                                        ToolTip="{Binding KillTooltip}"/>
                                                 <Button Content="Allow 30m"
                                                         Command="{Binding Allow30mCommand}"
                                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
                                                         Background="#339944" Foreground="White"
                                                         Padding="10,4" Margin="0,0,4,0"
                                                         BorderBrush="#1F6629" BorderThickness="1"
-                                                        ToolTip="Allow ALL controlled devices online for 30 minutes (router-wide override)"/>
+                                                        ToolTip="{Binding AllowTooltip}"/>
                                                 <Button Content="Clear"
                                                         Command="{Binding ClearOverrideCommand}"
                                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
                                                         Background="#55555A" Foreground="White"
                                                         Padding="10,4"
                                                         BorderBrush="#33333A" BorderThickness="1"
-                                                        ToolTip="Clear any active override and revert to the schedule"/>
+                                                        ToolTip="{Binding ClearTooltip}"/>
                                             </StackPanel>
                                             <TextBlock Grid.Row="1" Margin="4,0,0,2"
                                                        Text="{Binding LastActionText}"
@@ -201,7 +204,7 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PaneBg}"
+            <Border Grid.Row="2" Grid.Column="0" Background="{StaticResource PaneBg}"
                     BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
@@ -253,11 +256,11 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Background="{StaticResource PaneBg}">
+            <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="1" Background="{StaticResource PaneBg}">
                 <v:DomainsControl DataContext="{Binding Domains}"/>
             </Border>
 
-            <v:LogTailPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+            <v:LogTailPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
                             DataContext="{Binding LogTail}"/>
         </Grid>
     </DockPanel>

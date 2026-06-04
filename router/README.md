@@ -14,7 +14,8 @@ modes (blocklist vs whitelist).
 | `kidblock-domains.conf`    | Domains blocked for blocklist-mode devices. One domain per line. |
 | `kidblock-allowlist.conf`  | Domains allowed for whitelist-mode devices. One domain per line. (DM6) |
 | `kidblock-schedule.conf`   | Block windows (optionally per-day-of-week). |
-| `kidblock-init.sh`         | Boot hook -- re-runs `kidblock.sh init` after reboot. |
+| `kidblock-init.sh`         | Boot hook -- re-runs `kidblock.sh init` after reboot (also restores unexpired per-MAC overrides from `kidblock-overrides.conf`). |
+| `kidblock-overrides.conf`  | (DM9) Active per-MAC overrides. Managed by `kidblock.sh override-*` / `clear-override`. One row: `<MAC>  block\|allow  <minutes>  <expiry-epoch>`. Not shipped in the repo -- the script creates it on first override. |
 | `router-setup-commands.txt`| Manual install steps if `Install-Router-Scripts.ps1` can't reach the router. |
 
 ## The two modes
@@ -73,6 +74,80 @@ When any device on the network looks up an allowlisted domain (e.g.
 whitelist device's subsequent TCP connect to that IP matches RETURN and
 flows out normally.
 
+## Per-MAC overrides (DM9)
+
+Each device can be overridden independently, so locking the kid's iPad
+doesn't lock the parent's laptop. State lives in
+`kidblock-overrides.conf` (one row per active override; managed by
+`kidblock.sh`):
+
+```
+# MAC               verb   minutes   expiry-epoch
+98:59:7a:8b:a5:8d   block  1440      1759334400
+7c:50:79:f7:db:13   allow  30        1759335200
+```
+
+Two verbs:
+
+- `override-block <MAC> <minutes>` -- DROP this MAC at the top of
+  `KIDBLOCK_TIME`. Preempts the schedule AND any blocklist/whitelist
+  filtering (the DROP terminates FORWARD traversal).
+- `override-allow <MAC> <minutes>` -- ACCEPT this MAC at the top of
+  `KIDBLOCK_TIME`. Bypasses the schedule AND any blocklist/whitelist
+  filtering (the ACCEPT terminates FORWARD traversal).
+
+To clear:
+
+- `clear-override <MAC>` -- remove the override for one device; it
+  returns to the schedule + its mode-specific filter.
+- `clear-override --all` -- remove every active override.
+
+Bulk (operating on every controlled MAC in `kidblock-macs.conf` in
+one call, for the bedtime / homework-start use case):
+
+- `override-block --all <minutes>` -- block every controlled device.
+- `override-allow --all <minutes>` -- allow every controlled device.
+- `override-block <minutes>` (numeric first arg, no MAC) is a
+  **back-compat alias** for `--all <minutes>`; same for
+  `override-allow <minutes>` and bare `clear-override`. The existing
+  `windows/*.ps1` shortcuts and any external scripts using the pre-DM9
+  no-MAC form keep working without changes.
+
+### Precedence invariant
+
+`override-{block,allow} <MAC>` takes precedence over **both** the schedule
+AND any blocklist/whitelist mode for the duration of the override:
+
+- A **whitelist** device under an active **block** override is fully
+  blocked (the override DROP at the top of `KIDBLOCK_TIME` fires
+  before `KIDBLOCK_WHITELIST` would let any allowlisted domain
+  through).
+- A **whitelist** device under an active **allow** override has fully
+  unrestricted internet for the override window (the override ACCEPT
+  terminates FORWARD traversal, so `KIDBLOCK_WHITELIST` never sees
+  the packet). This is the simple per-MAC unrestricted-grant
+  pre-DM9 didn't have.
+- A **blocklist** device under an active **block** override is fully
+  blocked (override DROP preempts schedule + `KIDBLOCK_DOMAINS`).
+- A **blocklist** device under an active **allow** override has
+  unrestricted internet for the window (override ACCEPT preempts
+  schedule + `KIDBLOCK_DOMAINS`).
+
+### Lifecycle
+
+- A new override row carries an `expiry-epoch` (UTC seconds since 1970)
+  set to `now + <minutes>*60`. Subsequent `kidblock.sh reapply` ticks
+  prune expired rows before rebuilding `KIDBLOCK_TIME`, so the chain
+  reverts to the schedule the moment the override is gone.
+- Reboot survival: `kidblock-overrides.conf` lives at
+  `/config/scripts/`, which is the persistent EdgeOS config partition.
+  The boot hook (`kidblock-init.sh`) runs `kidblock.sh init`, which
+  prunes expired rows then rebuilds the chain.
+- Pre-DM9 single-global-override migration: the legacy
+  `/var/run/kidblock.override` file (if it still exists on first DM9
+  boot) is one-shot promoted into per-MAC entries for every controlled
+  MAC, then the legacy file is removed. Idempotent.
+
 ## Commands
 
 ```bash
@@ -82,38 +157,30 @@ sudo /config/scripts/kidblock.sh install-allowlist    # whitelist (dnsmasq + ips
 sudo /config/scripts/kidblock.sh reapply              # re-evaluate chains against current confs
 
 # Inspect
-sudo /config/scripts/kidblock.sh status               # human-readable summary
+sudo /config/scripts/kidblock.sh status               # human-readable summary (incl. per-MAC overrides)
+sudo /config/scripts/kidblock.sh status <MAC>         # one-line override state for a single MAC
 sudo ipset list kidblock_domains_v4                   # currently-resolved blocklisted IPs
 sudo ipset list kidblock_allow_v4                     # currently-resolved allowlisted IPs
 
-# Override (router-wide)
-sudo /config/scripts/kidblock.sh override-allow 30    # 30-min global pause of schedule's block windows
-sudo /config/scripts/kidblock.sh override-block 30
-sudo /config/scripts/kidblock.sh clear-override
+# Override (per-MAC -- DM9)
+sudo /config/scripts/kidblock.sh override-block 98:59:7a:8b:a5:8d 60
+sudo /config/scripts/kidblock.sh override-allow 7c:50:79:f7:db:13 30
+sudo /config/scripts/kidblock.sh clear-override 98:59:7a:8b:a5:8d
+
+# Override (bulk -- every controlled MAC)
+sudo /config/scripts/kidblock.sh override-block --all 1440  # bedtime kill, 24h ceiling
+sudo /config/scripts/kidblock.sh override-allow --all 30
+sudo /config/scripts/kidblock.sh clear-override --all
+
+# Override (back-compat, no MAC = --all)
+sudo /config/scripts/kidblock.sh override-block 30          # alias for --all 30
+sudo /config/scripts/kidblock.sh override-allow 30          # alias for --all 30
+sudo /config/scripts/kidblock.sh clear-override             # alias for --all
 
 # Tear down
 sudo /config/scripts/kidblock.sh uninstall-domains
 sudo /config/scripts/kidblock.sh uninstall-allowlist
 ```
-
-## `override-allow` interaction with whitelist mode
-
-`override-allow N` lifts the schedule-based full-block (`KIDBLOCK_TIME`) for
-all controlled devices for N minutes. It **does not** lift the per-device
-filters (`KIDBLOCK_DOMAINS` for blocklist devices, `KIDBLOCK_WHITELIST` for
-whitelist devices) -- those keep enforcing throughout the override window.
-
-For a whitelist device this means: during `override-allow`, the device can
-still only reach allowlisted domains. The override only matters if the
-schedule was about to clamp the device down further.
-
-If you genuinely need to grant a whitelist device temporary unrestricted
-access (e.g. the kid needs to grab a YouTube tutorial referenced in an
-assignment), the simple workarounds today are: (a) flip the device's Mode
-to Blocklist via the UI for the duration, then flip back; or (b)
-temporarily uncomment `youtube.com` in `kidblock-allowlist.conf` + run
-`install-allowlist`. A first-class per-MAC unrestricted override is a
-follow-up worth considering if this comes up often.
 
 ## Caveats specific to whitelist mode
 

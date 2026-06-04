@@ -14,9 +14,17 @@ public sealed record RouterConfig(
     string MacConfPath,
     string ScheduleConfPath,
     string DomainsConfPath,
-    string AllowlistConfPath = "/config/scripts/kidblock-allowlist.conf");
+    string AllowlistConfPath = "/config/scripts/kidblock-allowlist.conf",
+    string OverridesConfPath = "/config/scripts/kidblock-overrides.conf");
 
 public sealed record DhcpLease(string Mac, string Ip, System.DateTimeOffset? Expiry, string? Hostname);
+
+public enum OverrideVerb { None, Block, Allow }
+
+// One row of kidblock-overrides.conf (DM9). ExpiryUtc is when the override
+// expires (router-side epoch, parsed UTC); the UI uses this to render the
+// per-row "BLOCKED-until-HH:MM" / "ALLOWED-until-HH:MM" badge.
+public sealed record OverrideEntry(string Mac, OverrideVerb Verb, int Minutes, System.DateTimeOffset ExpiryUtc);
 
 public sealed class RouterClient : IDisposable
 {
@@ -79,6 +87,7 @@ public sealed class RouterClient : IDisposable
     public string MacConfPath       => _config.MacConfPath;
     public string DomainsConfPath   => _config.DomainsConfPath;
     public string AllowlistConfPath => _config.AllowlistConfPath;
+    public string OverridesConfPath => _config.OverridesConfPath;
 
     public Task WriteConfigFileAsync(string remotePath, string content, CancellationToken ct = default) =>
         Task.Run(() =>
@@ -150,19 +159,58 @@ public sealed class RouterClient : IDisposable
             }
         }, ct);
 
-    public Task OverrideBlockAsync(int minutes, CancellationToken ct = default) =>
-        RunOverrideAsync("override-block", minutes, ct);
+    // Per-MAC override verbs (DM9). The router-side kidblock.sh contract:
+    //   override-block <MAC> <min>     -- DROP for just this MAC at top of KIDBLOCK_TIME
+    //   override-allow <MAC> <min>     -- ACCEPT for just this MAC at top of KIDBLOCK_TIME
+    //   clear-override <MAC>           -- remove this MAC's override
+    //   override-block --all <min>     -- bulk; loop every controlled MAC
+    //   override-allow --all <min>     -- bulk
+    //   clear-override --all           -- clear every override
+    public Task OverrideBlockAsync(string mac, int minutes, CancellationToken ct = default) =>
+        RunPerMacOverrideAsync("override-block", mac, minutes, ct);
 
-    public Task OverrideAllowAsync(int minutes, CancellationToken ct = default) =>
-        RunOverrideAsync("override-allow", minutes, ct);
+    public Task OverrideAllowAsync(string mac, int minutes, CancellationToken ct = default) =>
+        RunPerMacOverrideAsync("override-allow", mac, minutes, ct);
 
-    public Task ClearOverrideAsync(CancellationToken ct = default) =>
+    public Task ClearOverrideAsync(string mac, CancellationToken ct = default) =>
+        RunSimpleAsync($"clear-override {EscapeMac(mac)}", ct);
+
+    public Task OverrideBlockAllAsync(int minutes, CancellationToken ct = default) =>
+        RunBulkOverrideAsync("override-block", minutes, ct);
+
+    public Task OverrideAllowAllAsync(int minutes, CancellationToken ct = default) =>
+        RunBulkOverrideAsync("override-allow", minutes, ct);
+
+    public Task ClearAllOverridesAsync(CancellationToken ct = default) =>
+        RunSimpleAsync("clear-override --all", ct);
+
+    // Read kidblock-overrides.conf and parse to a per-MAC dictionary. Missing
+    // file -> empty dict (the router script creates the file on first override;
+    // if it's never been used the file legitimately doesn't exist).
+    public async Task<IReadOnlyDictionary<string, OverrideEntry>> GetOverrideStateAsync(CancellationToken ct = default)
+    {
+        var text = await SafeCatAsync(_config.OverridesConfPath, ct).ConfigureAwait(false);
+        return ParseOverrides(text);
+    }
+
+    private async Task<string> SafeCatAsync(string remotePath, CancellationToken ct)
+    {
+        try { return await GetConfigFileAsync(remotePath, ct).ConfigureAwait(false); }
+        catch { return string.Empty; }
+    }
+
+    private Task RunPerMacOverrideAsync(string subcommand, string mac, int minutes, CancellationToken ct) =>
         Task.Run(() =>
         {
+            if (string.IsNullOrWhiteSpace(mac) || !MacRx.IsMatch(mac))
+                throw new ArgumentException("MAC must be aa:bb:cc:dd:ee:ff form.", nameof(mac));
+            if (minutes < 1 || minutes > 1440)
+                throw new ArgumentOutOfRangeException(nameof(minutes), minutes,
+                    "Override minutes must be between 1 and 1440 (24h ceiling matches the PS1 shortcuts).");
             var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
             if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
             ct.ThrowIfCancellationRequested();
-            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} clear-override");
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} {subcommand} {EscapeMac(mac)} {minutes}");
             cmd.CommandTimeout = TimeSpan.FromSeconds(15);
             var output = cmd.Execute();
             ct.ThrowIfCancellationRequested();
@@ -170,11 +218,11 @@ public sealed class RouterClient : IDisposable
             {
                 var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
                 throw new InvalidOperationException(
-                    $"kidblock.sh clear-override failed (exit {cmd.ExitStatus}): {err.Trim()}");
+                    $"kidblock.sh {subcommand} {mac} {minutes} failed (exit {cmd.ExitStatus}): {err.Trim()}");
             }
         }, ct);
 
-    private Task RunOverrideAsync(string subcommand, int minutes, CancellationToken ct) =>
+    private Task RunBulkOverrideAsync(string subcommand, int minutes, CancellationToken ct) =>
         Task.Run(() =>
         {
             if (minutes < 1 || minutes > 1440)
@@ -183,7 +231,25 @@ public sealed class RouterClient : IDisposable
             var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
             if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
             ct.ThrowIfCancellationRequested();
-            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} {subcommand} {minutes}");
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} {subcommand} --all {minutes}");
+            cmd.CommandTimeout = TimeSpan.FromSeconds(30);
+            var output = cmd.Execute();
+            ct.ThrowIfCancellationRequested();
+            if (cmd.ExitStatus != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
+                throw new InvalidOperationException(
+                    $"kidblock.sh {subcommand} --all {minutes} failed (exit {cmd.ExitStatus}): {err.Trim()}");
+            }
+        }, ct);
+
+    private Task RunSimpleAsync(string args, CancellationToken ct) =>
+        Task.Run(() =>
+        {
+            var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+            if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+            ct.ThrowIfCancellationRequested();
+            using var cmd = ssh.CreateCommand($"sudo {_config.ScriptPath} {args}");
             cmd.CommandTimeout = TimeSpan.FromSeconds(15);
             var output = cmd.Execute();
             ct.ThrowIfCancellationRequested();
@@ -191,9 +257,16 @@ public sealed class RouterClient : IDisposable
             {
                 var err = string.IsNullOrWhiteSpace(cmd.Error) ? output : cmd.Error;
                 throw new InvalidOperationException(
-                    $"kidblock.sh {subcommand} {minutes} failed (exit {cmd.ExitStatus}): {err.Trim()}");
+                    $"kidblock.sh {args} failed (exit {cmd.ExitStatus}): {err.Trim()}");
             }
         }, ct);
+
+    private static readonly Regex MacRx = new(@"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$", RegexOptions.Compiled);
+
+    // Belt-and-braces: only [0-9a-fA-F:] characters survive the shell-substitution
+    // boundary. MacRx already validates the input shape; this strip is defensive.
+    private static string EscapeMac(string mac) =>
+        new string(mac.Where(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == ':').ToArray()).ToLowerInvariant();
 
     public async Task<RouterState> GetStatusAsync(CancellationToken ct = default)
     {
@@ -327,38 +400,57 @@ public sealed class RouterClient : IDisposable
         return new List<DhcpLease>(byMac.Values);
     }
 
-    private static readonly Regex RxCurrentApplied = new(
-        @"^Current applied\s*:\s*(?<v>\S+)", RegexOptions.Compiled | RegexOptions.Multiline);
-
     private static readonly Regex RxScheduleSays = new(
         @"^Schedule says now\s*:\s*(?<v>\S+)", RegexOptions.Compiled | RegexOptions.Multiline);
 
-    private static readonly Regex RxEffectiveDesired = new(
-        @"^Effective desired\s*:\s*(?<v>\S+)", RegexOptions.Compiled | RegexOptions.Multiline);
-
-    private static readonly Regex RxOverrideActive = new(
-        @"^Override active\s*:\s*(?<mode>\S+)\s+until\s+(?<until>\S+)\s+\((?<rem>\d+)\s+min remaining\)",
-        RegexOptions.Compiled | RegexOptions.Multiline);
-
+    // DM9: cmd_status no longer prints Current applied / Effective desired / Override active
+    // (those were the pre-DM9 single-global-override surface). Schedule says now is preserved.
+    // Per-MAC override state is sourced from GetOverrideStateAsync() instead.
     internal static RouterState ParseStatus(string text)
     {
-        var applied = RxCurrentApplied.Match(text).Groups["v"].Value;
         var sched = RxScheduleSays.Match(text).Groups["v"].Value;
-        var desired = RxEffectiveDesired.Match(text).Groups["v"].Value;
-        string? overrideMode = null;
-        System.DateTimeOffset? overrideExpiry = null;
-        var ov = RxOverrideActive.Match(text);
-        if (ov.Success && int.TryParse(ov.Groups["rem"].Value, out var rem))
-        {
-            overrideMode = ov.Groups["mode"].Value;
-            overrideExpiry = System.DateTimeOffset.Now.AddMinutes(rem);
-        }
         return new RouterState(
-            applied,
+            string.Empty,
             sched,
-            desired,
+            string.Empty,
             System.DateTimeOffset.Now,
-            overrideMode,
-            overrideExpiry);
+            null,
+            null);
+    }
+
+    // Parse kidblock-overrides.conf into a per-MAC dictionary. Format:
+    //   # comments
+    //   aa:bb:cc:dd:ee:ff   block  60   1780547130
+    //   ...
+    // Expired entries (expiry <= now) are dropped -- defense in depth in case the
+    // router-side prune hasn't fired yet. Returns empty dict on null/empty input.
+    internal static IReadOnlyDictionary<string, OverrideEntry> ParseOverrides(string? text)
+    {
+        var dict = new Dictionary<string, OverrideEntry>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(text)) return dict;
+        var nowSec = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r').Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            var tokens = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length < 4) continue;
+            if (!MacRx.IsMatch(tokens[0])) continue;
+            var verbRaw = tokens[1].ToLowerInvariant();
+            OverrideVerb verb;
+            switch (verbRaw)
+            {
+                case "block": verb = OverrideVerb.Block; break;
+                case "allow": verb = OverrideVerb.Allow; break;
+                default: continue;
+            }
+            if (!int.TryParse(tokens[2], out var mins)) continue;
+            if (!long.TryParse(tokens[3], out var expEpoch)) continue;
+            if (expEpoch <= nowSec) continue;
+            var mac = tokens[0].ToLowerInvariant();
+            var expiryUtc = System.DateTimeOffset.FromUnixTimeSeconds(expEpoch);
+            dict[mac] = new OverrideEntry(mac, verb, mins, expiryUtc);
+        }
+        return dict;
     }
 }

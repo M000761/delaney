@@ -44,6 +44,14 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private DeviceRowViewModel? _selectedDevice;
 
+    // DM9: per-MAC override summary text bound to the BulkActionBar
+    // ("Overrides active: N of M devices"). Updated alongside per-row state.
+    [ObservableProperty]
+    private string _overridesSummary = "Overrides active: 0 of 0 devices";
+
+    [ObservableProperty]
+    private bool _hasActiveOverrides;
+
     // Cache of the most-recently-read kidblock-macs.conf text -- needed to round-trip
     // a Mode toggle without losing label / formatting on rows we didn't touch.
     private string _lastMacsConfText = string.Empty;
@@ -70,18 +78,34 @@ public sealed partial class MainViewModel : ObservableObject
         LogTail = new LogTailViewModel(config, Dispatcher.CurrentDispatcher);
     }
 
-    private void ApplyRouterOverrideState(RouterState state)
+    // DM9: project the per-MAC override dict onto each row + recompute the
+    // BulkActionBar summary text. Rows whose MAC isn't in the dict are cleared
+    // to NONE; rows whose MAC is present pick up that entry's verb + expiry.
+    private void ApplyOverrideState(IReadOnlyDictionary<string, OverrideEntry> byMac)
     {
-        var mode = string.IsNullOrEmpty(state.OverrideMode) ? null : state.OverrideMode;
-        foreach (var row in Devices) row.UpdateOverrideState(mode, state.OverrideExpires);
+        var active = 0;
+        foreach (var row in Devices)
+        {
+            if (byMac.TryGetValue(row.Mac.ToLowerInvariant(), out var entry))
+            {
+                row.UpdateOverrideState(entry.Verb == OverrideVerb.Block ? "block" : "allow", entry.ExpiryUtc.ToLocalTime());
+                active++;
+            }
+            else
+            {
+                row.UpdateOverrideState(null, null);
+            }
+        }
+        OverridesSummary = $"Overrides active: {active} of {Devices.Count} devices";
+        HasActiveOverrides = active > 0;
+        Schedule.OverrideActive = active > 0;
     }
 
     private async Task RefreshOverrideStateOnlyAsync(CancellationToken ct)
     {
         if (_client is null || !_client.IsConnected) return;
-        var state = await _client.GetStatusAsync(ct).ConfigureAwait(true);
-        ApplyRouterOverrideState(state);
-        Schedule.OverrideActive = !string.IsNullOrEmpty(state.OverrideMode);
+        var byMac = await _client.GetOverrideStateAsync(ct).ConfigureAwait(true);
+        ApplyOverrideState(byMac);
     }
 
     public async Task OverrideBlockFromRowAsync(DeviceRowViewModel row, int minutes, CancellationToken ct)
@@ -91,17 +115,17 @@ public sealed partial class MainViewModel : ObservableObject
         var confirm = KillConfirm;
         if (confirm is null) return;
         var body =
-            $"Block ALL controlled devices for up to 24 hours.\n" +
-            $"(Triggered from row: {name})\n" +
+            $"Block {name} for up to 24 hours.\n" +
+            $"This device only -- other controlled devices keep their current state.\n" +
             $"\n" +
             $"Schedule's next tick is still honored once the override expires. " +
             $"Click Clear to release sooner.";
-        if (!confirm("Kill internet for controlled devices?", body)) return;
+        if (!confirm($"Kill internet for {name}?", body)) return;
 
         row.IsBusy = true;
         try
         {
-            await _client.OverrideBlockAsync(minutes, ct).ConfigureAwait(true);
+            await _client.OverrideBlockAsync(row.Mac, minutes, ct).ConfigureAwait(true);
             await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
             var until = row.OverrideExpires?.LocalDateTime.ToString("HH:mm") ?? "--:--";
             row.ShowToast(minutes >= 1440 ? $"KILL applied (until {until})" : $"Blocked until {until}");
@@ -117,7 +141,7 @@ public sealed partial class MainViewModel : ObservableObject
         row.IsBusy = true;
         try
         {
-            await _client.OverrideAllowAsync(minutes, ct).ConfigureAwait(true);
+            await _client.OverrideAllowAsync(row.Mac, minutes, ct).ConfigureAwait(true);
             await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
             var until = row.OverrideExpires?.LocalDateTime.ToString("HH:mm") ?? "--:--";
             row.ShowToast($"Allowed until {until}");
@@ -133,13 +157,67 @@ public sealed partial class MainViewModel : ObservableObject
         row.IsBusy = true;
         try
         {
-            await _client.ClearOverrideAsync(ct).ConfigureAwait(true);
+            await _client.ClearOverrideAsync(row.Mac, ct).ConfigureAwait(true);
             await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
             row.ShowToast("Override cleared");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { row.ShowToast($"Clear failed: {ex.Message}"); }
         finally { row.IsBusy = false; }
+    }
+
+    // BulkActionBar (DM9). Wraps the router-side --all primitive so the bedtime
+    // (lock-everything) use case has an honest affordance separate from per-row.
+    // KILL ALL is confirm-gated (24h max ceiling); ALLOW 30m and CLEAR ALL are
+    // not (they're recoverable in one click).
+    [RelayCommand]
+    private async Task BulkKillAsync(CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) return;
+        var count = Devices.Count;
+        if (count == 0) return;
+        var confirm = KillConfirm;
+        if (confirm is null) return;
+        var body =
+            $"Block ALL {count} controlled devices for up to 24 hours.\n" +
+            $"\n" +
+            $"Per-device schedule is still honored once the override expires. " +
+            $"Click CLEAR ALL to release sooner.";
+        if (!confirm($"Kill internet for ALL {count} controlled devices?", body)) return;
+        try
+        {
+            await _client.OverrideBlockAllAsync(1440, ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { ErrorMessage = $"KILL ALL failed: {ex.Message}"; }
+    }
+
+    [RelayCommand]
+    private async Task BulkAllowAsync(CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) return;
+        if (Devices.Count == 0) return;
+        try
+        {
+            await _client.OverrideAllowAllAsync(30, ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { ErrorMessage = $"ALLOW 30m ALL failed: {ex.Message}"; }
+    }
+
+    [RelayCommand]
+    private async Task BulkClearAsync(CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) return;
+        try
+        {
+            await _client.ClearAllOverridesAsync(ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { ErrorMessage = $"CLEAR ALL failed: {ex.Message}"; }
     }
 
     [RelayCommand]
@@ -164,9 +242,9 @@ public sealed partial class MainViewModel : ObservableObject
             // Allowlist read is best-effort -- the file may legitimately not exist
             // (whitelist mode never installed). Empty body parses to zero domains.
             var allowTask   = SafeGetAsync(_client, _config.AllowlistConfPath, ct);
-            var statusTask  = _client.GetStatusAsync(ct);
+            var overridesTask = _client.GetOverrideStateAsync(ct);
 
-            await Task.WhenAll(dhcpTask, macsTask, schedTask, domTask, allowTask, statusTask).ConfigureAwait(true);
+            await Task.WhenAll(dhcpTask, macsTask, schedTask, domTask, allowTask, overridesTask).ConfigureAwait(true);
 
             var leases       = await dhcpTask.ConfigureAwait(true);
             var macsText     = await macsTask.ConfigureAwait(true);
@@ -175,7 +253,7 @@ public sealed partial class MainViewModel : ObservableObject
             var windows      = ConfigParser.ParseSchedule(await schedTask.ConfigureAwait(true));
             var domains      = ConfigParser.ParseDomains(await domTask.ConfigureAwait(true));
             var allowDomains = ConfigParser.ParseDomains(await allowTask.ConfigureAwait(true));
-            var state        = await statusTask.ConfigureAwait(true);
+            var overridesByMac = await overridesTask.ConfigureAwait(true);
 
             var leaseByMac = new Dictionary<string, DhcpLease>(StringComparer.OrdinalIgnoreCase);
             foreach (var l in leases) leaseByMac[l.Mac] = l;
@@ -199,10 +277,9 @@ public sealed partial class MainViewModel : ObservableObject
                 }
             }
 
-            ApplyRouterOverrideState(state);
+            ApplyOverrideState(overridesByMac);
 
             Schedule.LoadFromRouter(windows);
-            Schedule.OverrideActive = !string.IsNullOrEmpty(state.OverrideMode);
 
             Domains.LoadBlocklistFromRouter(domains);
             Domains.LoadAllowlistFromRouter(allowDomains);

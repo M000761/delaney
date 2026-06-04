@@ -6,9 +6,9 @@ using KidBlockUI.Models;
 namespace KidBlockUI.ViewModels;
 
 // Per-device row backing the Devices DataGrid. Wraps a Device record + carries:
-//   - the router-wide override snapshot (every row reflects the same state -- kidblock.sh
-//     override is router-wide across the controlled-devices set, not per-MAC),
-//   - per-row RelayCommands for KILL / Allow-30m / Clear,
+//   - the PER-MAC override snapshot (DM9: each row reflects only its own override
+//     state, sourced from MainViewModel.OverridesByMac which parses kidblock-overrides.conf),
+//   - per-row RelayCommands for KILL / Allow-30m / Clear -- per-MAC honest,
 //   - a transient last-action toast string with a 5-second auto-clear.
 public sealed partial class DeviceRowViewModel : ObservableObject
 {
@@ -32,12 +32,20 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public bool IsWhitelist => Device.Mode == DeviceMode.Whitelist;
     public string ModeLabel => Device.Mode == DeviceMode.Whitelist ? "Whitelist" : "Blocklist";
 
-    // Router-wide override snapshot, projected onto every row.
+    // Per-MAC override snapshot (DM9). Was router-wide pre-DM9; now sourced
+    // from the per-MAC dict via UpdateOverrideState(...).
     [ObservableProperty]
     private string? _overrideMode;       // "block", "allow", or null
 
     [ObservableProperty]
     private System.DateTimeOffset? _overrideExpires;
+
+    // Per-row tooltip strings (DM9) -- name-honest text for the per-row buttons.
+    // Falls back to the MAC when the device row has no friendly name.
+    private string DisplayName => string.IsNullOrWhiteSpace(Name) ? Mac : Name;
+    public string KillTooltip  => $"Block {DisplayName} for up to 24h (this device only; clear to release sooner)";
+    public string AllowTooltip => $"Allow {DisplayName} internet access for 30 minutes (this device only)";
+    public string ClearTooltip => $"Clear override for {DisplayName} (return this device to the schedule)";
 
     [ObservableProperty]
     private string? _lastActionText;
@@ -102,6 +110,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         OnPropertyChanged(nameof(Mode));
         OnPropertyChanged(nameof(IsWhitelist));
         OnPropertyChanged(nameof(ModeLabel));
+        OnPropertyChanged(nameof(KillTooltip));
+        OnPropertyChanged(nameof(AllowTooltip));
+        OnPropertyChanged(nameof(ClearTooltip));
     }
 
     public void UpdateOverrideState(string? mode, System.DateTimeOffset? expires)
