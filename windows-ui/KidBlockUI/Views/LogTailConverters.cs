@@ -16,11 +16,13 @@ public sealed class LogKindToBrushConverter : IValueConverter
     public static readonly SolidColorBrush Install      = new(Color.FromRgb(0x60, 0xA0, 0xE0));
     public static readonly SolidColorBrush Error        = new(Color.FromRgb(0xFF, 0x40, 0x40));
     public static readonly SolidColorBrush Other        = new(Color.FromRgb(0x88, 0x88, 0x88));
+    // DM10 spike: cyan, distinct from the seven existing colors.
+    public static readonly SolidColorBrush Dns          = new(Color.FromRgb(0x3D, 0xBE, 0xD9));
 
     static LogKindToBrushConverter()
     {
         Block.Freeze(); Allow.Freeze(); Override.Freeze(); ScheduleTick.Freeze();
-        Install.Freeze(); Error.Freeze(); Other.Freeze();
+        Install.Freeze(); Error.Freeze(); Other.Freeze(); Dns.Freeze();
     }
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -32,6 +34,7 @@ public sealed class LogKindToBrushConverter : IValueConverter
             LogKind.ScheduleTick => ScheduleTick,
             LogKind.Install      => Install,
             LogKind.Error        => Error,
+            LogKind.Dns          => Dns,
             _                    => Other,
         } : (object)Other;
 

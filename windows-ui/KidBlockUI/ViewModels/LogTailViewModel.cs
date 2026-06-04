@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Data;
@@ -14,7 +15,9 @@ namespace KidBlockUI.ViewModels;
 
 public sealed partial class LogTailViewModel : ObservableObject, IDisposable
 {
-    private const int MaxEntries = 500;
+    // DM10: raised from 500 -> 2000 to absorb dnsmasq query volume without evicting
+    // control-plane (block / override / install) events when the DNS filter is ON.
+    private const int MaxEntries = 2000;
 
     private static readonly TimeSpan[] BackoffSchedule =
     {
@@ -25,13 +28,23 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
         TimeSpan.FromSeconds(30),
     };
 
+    // DM10 spike. Matches the dnsmasq log-queries=extra line shape, e.g.
+    //   Jun  4 19:14:32 EdgeRouter dnsmasq[1234]: query[A] youtube.com from 192.168.200.176
+    // We only emit `<ip> -> <host>` to the UI -- query-type + dnsmasq pid are noise
+    // when scanning the strip visually.
+    private static readonly Regex DnsQueryRx = new(
+        @"dnsmasq\[\d+\]:\s+query\[\w+\]\s+(?<host>\S+)\s+from\s+(?<ip>\S+)",
+        RegexOptions.Compiled);
+
     private readonly RouterConfig _config;
     private readonly Dispatcher _dispatcher;
     private readonly object _lifecycleLock = new();
 
     private RouterClient? _client;
+    private RouterClient? _dnsClient;
     private CancellationTokenSource? _cts;
     private Task? _consumerTask;
+    private Task? _dnsConsumerTask;
 
     public ObservableCollection<LogEntry> Entries { get; } = new();
     public ICollectionView View { get; }
@@ -47,6 +60,8 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _showInstall      = true;
     [ObservableProperty] private bool _showError        = true;
     [ObservableProperty] private bool _showOther        = true;
+    // DM10: default OFF so DNS volume only surfaces when the parent opts in.
+    [ObservableProperty] private bool _showDns          = false;
 
     public LogTailViewModel(RouterConfig config, Dispatcher dispatcher)
     {
@@ -73,15 +88,23 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
         get { lock (_lifecycleLock) return _consumerTask is { IsCompleted: false }; }
     }
 
-    // Start the background consumer if not already running. Idempotent.
+    // Start the background consumers if not already running. Idempotent.
+    // DM10: a second consumer streams dnsmasq query lines; both consumers share
+    // the cancellation token but reconnect independently so a DNS-stream blip
+    // doesn't reset the kidblock.log stream's backoff (or vice versa).
     public void Start()
     {
         lock (_lifecycleLock)
         {
-            if (_consumerTask is { IsCompleted: false }) return;
-            _cts = new CancellationTokenSource();
-            var token = _cts.Token;
-            _consumerTask = Task.Run(() => RunLoopAsync(token));
+            var ctlRunning = _consumerTask    is { IsCompleted: false };
+            var dnsRunning = _dnsConsumerTask is { IsCompleted: false };
+            if (ctlRunning && dnsRunning) return;
+            // Both dead -> fresh CTS (handles Pause->Start). Either-alive -> keep the
+            // shared CTS so the survivor's token doesn't change underneath it.
+            if (!ctlRunning && !dnsRunning) _cts = new CancellationTokenSource();
+            var token = _cts!.Token;
+            if (!ctlRunning) _consumerTask    = Task.Run(() => RunLoopAsync(token));
+            if (!dnsRunning) _dnsConsumerTask = Task.Run(() => RunDnsLoopAsync(token));
         }
     }
 
@@ -114,6 +137,7 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
             LogKind.Install      => ShowInstall,
             LogKind.Error        => ShowError,
             LogKind.Other        => ShowOther,
+            LogKind.Dns          => ShowDns,
             _                    => true,
         };
     }
@@ -155,6 +179,58 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
 
         try { _client?.Dispose(); } catch { /* ignore */ }
         _client = null;
+    }
+
+    // DM10 spike. Independent reconnect-with-backoff loop for the dnsmasq query
+    // stream -- runs on a second SSH connection so a transient DNS-stream blip
+    // doesn't reset the kidblock.log stream's backoff (or vice versa).
+    // Status text for this stream is suppressed (StatusText is owned by the
+    // control-plane loop; chattering it on every DNS reconnect would noise the
+    // primary signal). DNS-stream failures surface only via row absence + the
+    // SetStatus call below on terminal disconnect.
+    private async Task RunDnsLoopAsync(CancellationToken ct)
+    {
+        var attempt = 0;
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                _dnsClient?.Dispose();
+                _dnsClient = new RouterClient(_config);
+                await _dnsClient.ConnectAsync(ct).ConfigureAwait(false);
+                attempt = 0;
+
+                await foreach (var line in _dnsClient.StreamDnsQueriesAsync(ct).ConfigureAwait(false))
+                {
+                    var entry = ParseDnsLine(line);
+                    if (entry is not null) AppendOnUi(entry);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception)
+            {
+                var idx = Math.Min(attempt, BackoffSchedule.Length - 1);
+                var delay = BackoffSchedule[idx];
+                attempt++;
+                try { await Task.Delay(delay, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+
+        try { _dnsClient?.Dispose(); } catch { /* ignore */ }
+        _dnsClient = null;
+    }
+
+    private static LogEntry? ParseDnsLine(string line)
+    {
+        var m = DnsQueryRx.Match(line);
+        if (!m.Success) return null;
+        var host = m.Groups["host"].Value;
+        var ip = m.Groups["ip"].Value;
+        return new LogEntry(DateTimeOffset.Now, LogKind.Dns, $"{ip} -> {host}");
     }
 
     private void AppendOnUi(LogEntry entry)

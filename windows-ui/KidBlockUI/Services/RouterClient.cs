@@ -314,6 +314,46 @@ public sealed class RouterClient : IDisposable
         }
     }
 
+    // DM10 spike. Streams dnsmasq query lines from /var/log/messages. Requires
+    // EdgeOS `set service dns forwarding options log-queries=extra` (one-shot
+    // config at the router; documented in router/README.md). Same single-shot
+    // shape as StreamLogAsync -- caller is expected to wrap in its own
+    // reconnect-with-backoff loop so the DNS stream lifecycle is independent
+    // of the kidblock.log stream.
+    public async IAsyncEnumerable<string> StreamDnsQueriesAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var ssh = _ssh ?? throw new InvalidOperationException("SSH client not connected.");
+        if (!ssh.IsConnected) throw new InvalidOperationException("SSH client not connected.");
+
+        using var shell = ssh.CreateShellStream("kidblock-dns-tail", 200, 50, 800, 600, 4096);
+
+        // `-n 0` so we only see queries that arrive AFTER subscription -- a stream of
+        // queries from N seconds ago would just be noise. grep filters the dnsmasq
+        // query[*] lines; the corresponding reply lines + any unrelated syslog noise
+        // never reach the parser.
+        const string remoteCmd =
+            "stty -echo 2>/dev/null; " +
+            "tail -n 0 -f /var/log/messages | grep --line-buffered -E 'dnsmasq\\[[0-9]+\\]: query\\['";
+        shell.WriteLine(remoteCmd);
+
+        while (!ct.IsCancellationRequested)
+        {
+            string? line = await Task.Run(() =>
+            {
+                try { return shell.ReadLine(TimeSpan.FromMilliseconds(500)); }
+                catch (ObjectDisposedException) { return null; }
+            }, ct).ConfigureAwait(false);
+
+            if (line is null) continue;
+            if (line.Length == 0) continue;
+            // Drop the echoed bootstrap line (same race as StreamLogAsync).
+            if (line.Contains("tail -n 0 -f /var/log/messages")) continue;
+
+            yield return line;
+        }
+    }
+
     public void Dispose()
     {
         try { _ssh?.Disconnect(); } catch { /* ignore */ }

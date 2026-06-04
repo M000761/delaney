@@ -148,6 +148,24 @@ AND any blocklist/whitelist mode for the duration of the override:
   boot) is one-shot promoted into per-MAC entries for every controlled
   MAC, then the legacy file is removed. Idempotent.
 
+## DNS query logging (DM10 spike)
+
+Enable dnsmasq query logging once per router via EdgeOS configure mode:
+
+```
+configure
+set service dns forwarding options log-queries=extra
+commit; save; exit
+```
+
+After commit, dnsmasq writes one line per DNS query to `/var/log/messages` in the form
+`<ts> EdgeRouter dnsmasq[pid]: query[A] <hostname> from <source-ip>`. The Windows UI's
+live log strip tails this and surfaces each query as a DNS-kind row; the filter checkbox
+defaults OFF so DNS volume does not drown the control-plane events.
+
+Volume is non-trivial on a busy network (a single browser load can emit dozens of queries).
+HTTPS exposes only hostnames -- never URL paths.
+
 ## Commands
 
 ```bash

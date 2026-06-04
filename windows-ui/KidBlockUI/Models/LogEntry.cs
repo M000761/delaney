@@ -13,6 +13,7 @@ public enum LogKind
     Install,
     Error,
     Other,
+    Dns,
 }
 
 public sealed record LogEntry(DateTimeOffset Timestamp, LogKind Kind, string Message)
