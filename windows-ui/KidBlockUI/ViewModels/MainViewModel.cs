@@ -208,6 +208,20 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task BulkAllowDurationAsync(int minutes, CancellationToken ct)
+    {
+        if (_client is null || !_client.IsConnected) return;
+        if (Devices.Count == 0) return;
+        try
+        {
+            await _client.OverrideAllowAllAsync(minutes, ct).ConfigureAwait(true);
+            await RefreshOverrideStateOnlyAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { ErrorMessage = $"ALLOW {minutes}m ALL failed: {ex.Message}"; }
+    }
+
+    [RelayCommand]
     private async Task BulkClearAsync(CancellationToken ct)
     {
         if (_client is null || !_client.IsConnected) return;

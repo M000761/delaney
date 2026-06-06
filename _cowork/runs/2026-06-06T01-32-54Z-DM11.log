@@ -1,0 +1,26 @@
+[START] ts=2026-06-06T01:32:54+00:00 milestone=DM11 mode=deliberate preset=ltf-attended
+[INFO] head_at_recon=dd503d03338bf3dd7ed80c600980a637bd251d85
+[INFO] preset_invoked: ltf-attended
+[GATE] tool-recon=proceed
+[GATE] context-tier-gate=proceed
+[INFO] context-tier: mode=deliberate tier=1 (impact=quality surface=ui cascade=none) -> proceed
+[INFO] status-flip: id=DM11, from=proposed, to=inprogress
+[PHASE] start=orient ts=2026-06-06T01:32:54+00:00
+[INFO] survey: per-row Allow lives in MainWindow.xaml (DataGridTemplateColumn "Actions", lines 142-165); no separate DevicesGrid.xaml. Bulk ALLOW 30m in BulkActionBar.xaml. VMs: DeviceRowViewModel.Allow30mCommand -> MainViewModel.OverrideAllowFromRowAsync(row, minutes, ct) -> RouterClient.OverrideAllowAsync(MAC, minutes, ct). MainViewModel.BulkAllowCommand -> RouterClient.OverrideAllowAllAsync(minutes, ct). Both client methods already take arbitrary minutes; back-compat free.
+[INFO] target_framework: net8.0-windows WPF; WPF SplitButton is NOT native -> using Grid + Button + ToggleButton + Popup pattern per milestone HOW section #2.
+[PHASE] start=work ts=2026-06-06T01:38:00+00:00
+[INFO] authored Resources/AllowDurations.cs (AllowDuration record + Presets[11] + DefaultMinutes=30).
+[INFO] DeviceRowViewModel: added AllowDurationCommand (int minutes) routing to MainViewModel.OverrideAllowFromRowAsync(this, minutes, ct).
+[INFO] MainViewModel: added BulkAllowDurationCommand (int minutes) routing to _client.OverrideAllowAllAsync(minutes, ct).
+[INFO] MainWindow.xaml: per-row Allow column converted to Grid + Button("Allow 30m") + ToggleButton("v") + Popup{ItemsControl[AllowDurations.Presets]}; bound Allow30mCommand on main, AllowDurationCommand on items.
+[INFO] BulkActionBar.xaml: ALLOW 30m ALL converted to same SplitButton pattern; bound BulkAllowCommand on main, BulkAllowDurationCommand on items.
+[INFO] AllowDurationItem_Click handler in MainWindow.xaml.cs + BulkActionBar.xaml.cs walks logical-then-visual tree from sender to find enclosing Popup and sets IsOpen=false; Popup.IsOpen is TwoWay-bound to ToggleButton.IsChecked so close propagates back.
+[INFO] build_clean: dotnet build -> 0 errors / 0 warnings (scratch out to %TEMP%\dm11-scratch since KidBlockUI.exe pid=38284 is locking bin\).
+[GATE] dotnet-build=clean cost_ms=4930
+[PHASE] start=close ts=2026-06-06T01:44:00+00:00
+[INFO] sequence_check=no-change (DM11 not in any sequence-suggest cluster)
+[INFO] findings_transport=none (no fresh discoveries surfaced; rule-7 warm-ingest not triggered)
+[INFO] board_after_close=thin-deferred (delaney WBS P3 frontier holds only DM7 + DM11 post-graduate; proposer-pass requires a council brief child-manifest which delaney does not have)
+[INFO] cleanup_cap=none (the kernel-side _dm11_ingest.py + _dm11_dashboard-delaney.new.json are prior LC-WRITE thread scratch; precedent from _dm1_to_dm6/_dm8/_dm9 is leave-as-untracked)
+[END] outcome=success
+[INFO] head_check_at_emit=unchanged: was=dd503d03338bf3dd7ed80c600980a637bd251d85 now=dd503d03338bf3dd7ed80c600980a637bd251d85

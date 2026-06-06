@@ -145,6 +145,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     private Task Allow30mAsync(CancellationToken ct) => _parent.OverrideAllowFromRowAsync(this, 30, ct);
 
     [RelayCommand]
+    private Task AllowDurationAsync(int minutes, CancellationToken ct) => _parent.OverrideAllowFromRowAsync(this, minutes, ct);
+
+    [RelayCommand]
     private Task ClearOverrideAsync(CancellationToken ct) => _parent.ClearOverrideFromRowAsync(this, ct);
 
     [RelayCommand]

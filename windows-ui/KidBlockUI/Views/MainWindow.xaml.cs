@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using KidBlockUI.Models;
 using KidBlockUI.Services;
@@ -74,6 +75,17 @@ public partial class MainWindow : Window
     private void DiscardSchedule_Click(object sender, RoutedEventArgs e)
     {
         _vm.Schedule.Discard();
+    }
+
+    private void AllowDurationItem_Click(object sender, RoutedEventArgs e)
+    {
+        var d = sender as DependencyObject;
+        while (d != null)
+        {
+            if (d is Popup popup) { popup.IsOpen = false; return; }
+            d = LogicalTreeHelper.GetParent(d)
+                ?? (d is Visual v ? VisualTreeHelper.GetParent(v) : null);
+        }
     }
 
     private void UpdateConnDot()
