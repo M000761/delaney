@@ -1,0 +1,28 @@
+[START] preset=audit-and-refresh-arch project=delaney ts=2026-06-10T03-11-29Z mode=all-run leg=4/6
+[INFO] head_at_recon=30a0c85 repo=delaney (kernel head 2c12bbc)
+[INFO] preset_invoked: audit-and-refresh-arch
+[INFO] step=resolve target=all (Step-1 AskUserQuestion, leg 4); mount C:\CC\delaney branch main; dashboard=_cowork/dashboard-delaney.json schema=kernel-schema-v1.14 >= floor v1.10; views=["boundary-map"]
+[PHASE] start=phase-a ts=2026-06-10T03-11-29Z
+[INFO] source=dashboard _cowork/dashboard-delaney.json: 0 active rows (DM1-DM11 all graduated); current_focus still bootstrap-stub (finding); PARKING key present (v1.14)
+[INFO] source=working-agreement kernel canonical v1.71 via rendered AGENTS.md stub
+[INFO] source=runs 8 DM logs mount-side + DM4/DM5/DM10 kernel-side (home-split observation; DM3 in both); DM11 close-log deep-read
+[INFO] source=tree direct reads: router/kidblock.sh (4 repo confs + router-resident overrides + /var/log/kidblock.log), windows/ action scripts, windows-ui/KidBlockUI (WPF, SSH.NET 2025.1.0 + CommunityToolkit.Mvvm 8.2.2, appsettings.json router binding)
+[INFO] write: C:\CC\delaney\_cowork\reports\2026-06-10T03-11-29Z-audit-delaney.md (tfi-edit.py --create --from staged; reports/ dir created)
+[GATE] tfi-audit-report=pass rc=0 file=_cowork/reports/2026-06-10T03-11-29Z-audit-delaney.md
+[PHASE] start=phase-b ts=2026-06-10T03-14-00Z
+[INFO] views-manifest=["boundary-map"] -> emitting System overview only; sitemap/tech-stack/network/bespoke undeclared -> skipped (KidBlockUI deps recorded in diff prose for the record)
+[INFO] correction: mount-canonical delaney-arch.md DID exist (2026-06-02, 15:37 +0930) — the leg-recon existence probe was wrong; --create refused correctly, switched to --rewrite per fail-fast contract
+[INFO] section=System overview 11 -> 12 nodes: +kidblockui (DM1-11 WPF, second SSH path) +overrides (DM9 router-resident store) +routerlog (/var/log/kidblock.log, DM5/DM10 observability stream); macs/sched/domains merged into one confs node (+DM6 allowlist) to hold the 8-12 curation cap
+[INFO] section=Diff-vs-last-run prior 712c7df -> kernel 2c12bbc / delaney 30a0c85; 12 delaney commits (entire DM1-DM11 program); nodes +4/-3; views 0; deps n/a (no tech-stack view declared)
+[INFO] marker: preset-freshness authored first-line ts=2026-06-10T03:11:29Z sha=2c12bbc reads=[C:/CC/delaney, _cowork/dashboard-delaney.json, _cowork/GLOSSARY.md, _cowork/PROJECT-MAP.json]
+[INFO] write: C:\CC\delaney\_cowork\architecture\delaney-arch.md (tfi-edit.py --rewrite, canonical)
+[INFO] write: <kernel>/_cowork/architecture/delaney-arch.md (tfi-edit.py --rewrite, mirror, same bytes)
+[GATE] tfi-arch-canonical=pass rc=0 file=C:\CC\delaney\_cowork\architecture\delaney-arch.md
+[GATE] tfi-arch-mirror=pass rc=0 file=<kernel>/_cowork/architecture/delaney-arch.md
+[INFO] step=summary
+audit-report-path:  _cowork/reports/2026-06-10T03-11-29Z-audit-delaney.md
+arch-md-path:       _cowork/architecture/delaney-arch.md
+nodes-added:        4
+nodes-retired:      3
+orphans-flagged:    0
+[END] outcome=success ts=2026-06-10T03-16-00Z
