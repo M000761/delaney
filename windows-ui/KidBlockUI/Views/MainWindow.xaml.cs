@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using Syncfusion.Windows.Tools.Controls;
 using KidBlockUI.Models;
 using KidBlockUI.Services;
 using KidBlockUI.ViewModels;
@@ -38,6 +39,10 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             UpdateConnDot();
+            // DM17: restore the persisted dock layout over the default XAML arrangement (first
+            // run / stale state degrades to the XAML layout). Before the async Refresh so the
+            // panes are arranged before data lands.
+            TryLoadDockState();
             // LogTail uses a SEPARATE SSH session so it can reconnect-with-backoff
             // independently; start it before Refresh so the user sees log activity
             // even if the initial Refresh fails.
@@ -72,7 +77,72 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // DM17: persist the current dock layout before the visual tree tears down, so the next
+        // launch restores it (TryLoadDockState). Runs while the Docker + panes are still intact.
+        TrySaveDockState();
         _vm?.LogTail.Dispose();
+    }
+
+    // ===================== DM17 dock-layout persistence + reset =====================
+    //
+    // The 4-pane body is a Syncfusion DockingManager (Views/MainWindow.xaml). The user can
+    // dock / float / tear-off / resize the panes; the arrangement saves to the app
+    // isolated-storage state store on close and restores on launch. PersistState=False on the
+    // manager, so these explicit save/load points own the round-trip (mirrors boat's
+    // DockShellView). Both paths are guarded: a first run has no saved state and a stale or
+    // corrupt state must degrade to the default XAML layout, never throw.
+
+    private void TryLoadDockState()
+    {
+        try
+        {
+            Docker.LoadDockState();
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"DockingManager: LoadDockState failed/absent; using the default XAML layout: {ex.Message}");
+        }
+    }
+
+    private void TrySaveDockState()
+    {
+        try
+        {
+            Docker.SaveDockState();
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DockingManager: SaveDockState failed: {ex.Message}");
+        }
+    }
+
+    // View tab "Reset Layout": return the four panes to their default docked arrangement,
+    // recovering from any float / auto-hide / resize. Re-asserts the same State /
+    // SideInDockedMode / Desired*InDockedMode the XAML declares; the persisted layout is
+    // rewritten on the next close.
+    private void ResetLayout_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            DockingManager.SetState(DevicesPane, DockState.Dock);
+            DockingManager.SetSideInDockedMode(DevicesPane, DockSide.Top);
+            DockingManager.SetDesiredHeightInDockedMode(DevicesPane, 240d);
+
+            DockingManager.SetState(SchedulePane, DockState.Document);
+
+            DockingManager.SetState(DomainsPane, DockState.Dock);
+            DockingManager.SetSideInDockedMode(DomainsPane, DockSide.Right);
+            DockingManager.SetDesiredWidthInDockedMode(DomainsPane, 300d);
+
+            DockingManager.SetState(LogPane, DockState.Dock);
+            DockingManager.SetSideInDockedMode(LogPane, DockSide.Bottom);
+            DockingManager.SetDesiredHeightInDockedMode(LogPane, 220d);
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DockingManager: ResetLayout failed: {ex.Message}");
+        }
     }
 
     private async void ApplySchedule_Click(object sender, RoutedEventArgs e)

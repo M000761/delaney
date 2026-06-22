@@ -33,6 +33,7 @@
         <DataTemplate x:Key="IcoApply">   <Viewbox Stretch="Uniform"><TextBlock Text="&#x1F4BE;" FontFamily="Segoe UI Emoji" FontSize="16"/></Viewbox></DataTemplate>
         <DataTemplate x:Key="IcoDiscard"> <Viewbox Stretch="Uniform"><TextBlock Text="&#x21A9;"  FontFamily="Segoe UI Emoji" FontSize="16"/></Viewbox></DataTemplate>
         <DataTemplate x:Key="IcoLogClear"><Viewbox Stretch="Uniform"><TextBlock Text="&#x1F5D1;" FontFamily="Segoe UI Emoji" FontSize="16"/></Viewbox></DataTemplate>
+        <DataTemplate x:Key="IcoLayout">  <Viewbox Stretch="Uniform"><TextBlock Text="&#x25A6;"  FontFamily="Segoe UI Emoji" FontSize="16"/></Viewbox></DataTemplate>
     </Window.Resources>
 
     <DockPanel LastChildFill="True">
@@ -219,11 +220,10 @@
                 </syncfusion:RibbonBar>
             </syncfusion:RibbonTab>
 
-            <!-- =================== VIEW : live-log display preferences ===================
+            <!-- =================== VIEW : live-log display preferences + layout ===================
                  Lean by design: KidBlock's panes self-contain their controls, so View
-                 surfaces the display preferences (mirrors of LogTail state). It is the
-                 natural home for the DM17 DockingManager layout commands (reset / float /
-                 dock) when that optional stage lands. -->
+                 surfaces the display preferences (mirrors of LogTail state) plus the DM17
+                 DockingManager layout commands (the Layout group below). -->
             <syncfusion:RibbonTab x:Name="ViewTab" Caption="View">
                 <syncfusion:RibbonBar Header="Live log display">
                     <CheckBox x:Name="AutoScrollCheck"
@@ -236,6 +236,18 @@
                               IsChecked="{Binding LogTail.ShowDns, Mode=TwoWay}"
                               VerticalAlignment="Center" Margin="6,2"
                               ToolTip="Surface the dnsmasq DNS-query firehose in the live log (off by default)."/>
+                </syncfusion:RibbonBar>
+                <!-- DM17 (DM13 program, Stage 3): layout commands for the DockingManager body.
+                     Reset returns the four panes to their default docked arrangement, recovering
+                     from any float / auto-hide / resize the user made; the persisted layout is
+                     rewritten on the next close. -->
+                <syncfusion:RibbonBar Header="Layout">
+                    <syncfusion:RibbonButton x:Name="ResetLayoutButton"
+                                             Label="Reset Layout"
+                                             SizeForm="Large"
+                                             Click="ResetLayout_Click"
+                                             IconTemplate="{StaticResource IcoLayout}"
+                                             ToolTip="Return the Devices / Schedule / Domains / Live log panes to their default docked arrangement."/>
                 </syncfusion:RibbonBar>
             </syncfusion:RibbonTab>
 
@@ -273,27 +285,33 @@
             </Grid>
         </Border>
 
-        <!-- =========================== Body : hosted bespoke controls =========================== -->
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" MinHeight="160"/>
-                <RowDefinition Height="*" MinHeight="160"/>
-                <RowDefinition Height="200" MinHeight="80"/>
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="780"/>
-                <ColumnDefinition Width="280" MinWidth="220"/>
-            </Grid.ColumnDefinitions>
+        <!-- =========================== Body : DockingManager (DM17) ===========================
+             DM17 (DM13 program, Stage 3, optional): the static 4-pane Grid becomes a Syncfusion
+             DockingManager so each bespoke pane (Devices / Schedule / Domains / Live log) is a
+             dockable, tear-off / floatable child whose arrangement persists across runs
+             (SaveDockState on close, LoadDockState on open; code-behind). PersistState=False so we
+             own the save / load points, mirroring boat's DockShellView. UseDocumentContainer=True
+             hosts Schedule as the centre document; Devices docks top, Domains right, Live log
+             bottom, approximating the prior Grid. CanClose=False on every pane: there is no re-add
+             UI, so a pane must never be closable to nothing (the View tab Reset Layout button
+             restores the default arrangement). All chrome resolves Theme.xaml tokens; no inline
+             hex, so PaletteLint stays green. -->
+        <syncfusion:DockingManager x:Name="Docker"
+                                   UseDocumentContainer="True"
+                                   PersistState="False">
 
-            <!-- Devices: native DataGrid kept (themes under FluentDark) hosting the rich per-row
-                 templates unchanged: mode toggle, override badge, the per-device action buttons
-                 plus the DM11 allow-duration split-popup, and the last-action toast. -->
-            <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource PaneBg}"
-                    BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,1">
+            <!-- Devices: native DataGrid hosted unchanged (rich per-row templates: mode toggle,
+                 override badge, the per-device action buttons plus the DM11 allow-duration
+                 split-popup, the last-action toast). The DockingManager caption carries the title,
+                 so the old in-pane header strip is dropped. -->
+            <Border x:Name="DevicesPane"
+                    syncfusion:DockingManager.Header="Devices"
+                    syncfusion:DockingManager.State="Dock"
+                    syncfusion:DockingManager.SideInDockedMode="Top"
+                    syncfusion:DockingManager.DesiredHeightInDockedMode="240"
+                    syncfusion:DockingManager.CanClose="False"
+                    Background="{StaticResource PaneBg}">
                 <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
-                        <TextBlock Text="Devices" FontWeight="SemiBold"/>
-                    </Border>
                     <DataGrid ItemsSource="{Binding Devices}"
                               SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
                               SelectionMode="Single"
@@ -466,8 +484,11 @@
             <!-- Schedule: ScheduleTimeline hosted unchanged. Apply / Discard are kept in the
                  pane footer AND mirrored on the Schedule ribbon tab (both call the same
                  ApplySchedule_Click / DiscardSchedule_Click handlers). -->
-            <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PaneBg}"
-                    BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,1,0">
+            <Border x:Name="SchedulePane"
+                    syncfusion:DockingManager.Header="Schedule"
+                    syncfusion:DockingManager.State="Document"
+                    syncfusion:DockingManager.CanClose="False"
+                    Background="{StaticResource PaneBg}">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{StaticResource PaneHeaderBg}" Padding="10,4">
                         <Grid>
@@ -519,14 +540,25 @@
             </Border>
 
             <!-- Domains: DomainsControl hosted unchanged (self-contains its own Apply / Discard,
-                 mirrored on the Domains ribbon tab). -->
-            <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Background="{StaticResource PaneBg}">
+                 mirrored on the Domains ribbon tab), docked right. -->
+            <Border x:Name="DomainsPane"
+                    syncfusion:DockingManager.Header="Domains"
+                    syncfusion:DockingManager.State="Dock"
+                    syncfusion:DockingManager.SideInDockedMode="Right"
+                    syncfusion:DockingManager.DesiredWidthInDockedMode="300"
+                    syncfusion:DockingManager.CanClose="False"
+                    Background="{StaticResource PaneBg}">
                 <v:DomainsControl DataContext="{Binding Domains}"/>
             </Border>
 
-            <!-- Live log: LogTailPanel hosted unchanged. -->
-            <v:LogTailPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+            <!-- Live log: LogTailPanel hosted unchanged, docked bottom (full width). -->
+            <v:LogTailPanel x:Name="LogPane"
+                            syncfusion:DockingManager.Header="Live Log"
+                            syncfusion:DockingManager.State="Dock"
+                            syncfusion:DockingManager.SideInDockedMode="Bottom"
+                            syncfusion:DockingManager.DesiredHeightInDockedMode="220"
+                            syncfusion:DockingManager.CanClose="False"
                             DataContext="{Binding LogTail}"/>
-        </Grid>
+        </syncfusion:DockingManager>
     </DockPanel>
 </Window>
