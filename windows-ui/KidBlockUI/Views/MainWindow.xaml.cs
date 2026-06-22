@@ -77,6 +77,20 @@ public partial class MainWindow : Window
         _vm.Schedule.Discard();
     }
 
+    // DM16: the Domains ribbon tab mirrors DomainsControl's in-pane Apply / Discard. Both
+    // routes drive the same MainViewModel.ApplyDomainsAsync path through the shared
+    // ApplyConfirmDialog, so the command is identical wherever it is invoked.
+    private async void ApplyDomains_Click(object sender, RoutedEventArgs e)
+    {
+        await _vm.ApplyDomainsAsync(diff =>
+            ApplyConfirmDialog.Show(this, "Apply domain changes?", diff));
+    }
+
+    private void DiscardDomains_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.Domains.Discard();
+    }
+
     private void AllowDurationItem_Click(object sender, RoutedEventArgs e)
     {
         var d = sender as DependencyObject;
