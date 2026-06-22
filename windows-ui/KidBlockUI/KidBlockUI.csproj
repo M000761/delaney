@@ -4,6 +4,11 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- DM18 (DM13 program, Stage 4): enable WinForms so App can host a System.Windows.Forms
+         NotifyIcon system-tray surface. The Forms assemblies ship in the same WindowsDesktop
+         shared framework that UseWPF already references, so this adds NO NuGet package
+         (offline-safe) and does NOT change the WPF entry point (App.xaml still owns Main). -->
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <LangVersion>12</LangVersion>
     <RootNamespace>KidBlockUI</RootNamespace>
@@ -12,6 +17,15 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <!-- DM18: WinForms is on ONLY for the App-hosted NotifyIcon. Drop its two implicit global
+       usings so System.Windows.Forms / System.Drawing simple names (Application, Color, Point,
+       ...) do NOT collide with the WPF System.Windows / System.Windows.Media names the rest of
+       the code resolves unqualified; the tray code fully-qualifies the few Forms types it uses. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="SSH.NET" Version="2025.1.0" />

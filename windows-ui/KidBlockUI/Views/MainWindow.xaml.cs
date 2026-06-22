@@ -53,6 +53,15 @@ public partial class MainWindow : Window
         {
             // Cancel the tail's SSH stream so we're not holding an idle session while hidden.
             _vm.LogTail.Pause();
+
+            // DM18: minimise-to-tray. Only hide when a tray surface is live to restore from
+            // (App.RestoreMainWindow / the Show menu item); otherwise stay a normal minimised
+            // taskbar window so a tray-init failure can never leave the window unreachable.
+            if (Application.Current is App app && app.TrayActive)
+            {
+                Hide();
+                app.NotifyMinimisedToTray();
+            }
         }
         else
         {
