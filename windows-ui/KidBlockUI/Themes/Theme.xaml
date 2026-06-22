@@ -1,0 +1,78 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        DM15 (DM13 program, Stage 1): KidBlockUI semantic-token layer.
+
+        Single source of truth for the bespoke (non-Syncfusion) palette. DM12
+        proved Syncfusion FluentDark themes the standard WPF + Syncfusion controls
+        app-wide via SfSkinManager, but NOT a control's hand-coded local hex; that
+        hex was duplicated across MainWindow, LogTailPanel, LogTailConverters and
+        the bespoke controls with no source of truth and no lint guard. This
+        dictionary centralises it. PaletteLint.targets then fails the build when a
+        new or grown inline Foreground/Background literal lands in Views/*.xaml.
+
+        Merged into Application.Resources (App.xaml) so every key resolves app-wide
+        and from the value converters (LogTailConverters.cs resolves by key).
+
+        VALUE POLICY: values are preserved byte for byte from the surfaces they
+        replaced (the catalogue in the DM12 go/no-go report section 5), so this is
+        a pure structural re-base, not a visual redesign; the shell renders the
+        same pixels as before. A deliberate FluentDark re-valuation (as boat did in
+        BM336, after first centralising value-preserving in BM217) is a later pass.
+
+        NAMING: boat Theme.xaml spirit (Status* accents, Btn* role sets, Text*
+        tiers). The four chrome keys delaney already used as local resource keys
+        (PaneBg / PaneHeaderBg / BorderSubtle / MutedText) keep their names so the
+        existing StaticResource references resolve unchanged.
+    -->
+
+    <!-- ===== Surfaces / chrome ===== -->
+    <SolidColorBrush x:Key="BgWindow"         Color="#1E1E1E"/>
+    <SolidColorBrush x:Key="PaneBg"           Color="#252526"/>
+    <SolidColorBrush x:Key="PaneHeaderBg"     Color="#2D2D30"/>
+    <SolidColorBrush x:Key="BorderSubtle"     Color="#3F3F46"/>
+    <SolidColorBrush x:Key="LogSurfaceBg"     Color="#1B1B1B"/>
+    <SolidColorBrush x:Key="RowAltBg"         Color="#2A2A2E"/>
+    <SolidColorBrush x:Key="TimelineCanvasBg" Color="#163B16"/>
+    <SolidColorBrush x:Key="PendingBadgeBg"   Color="#553311"/>
+
+    <!-- ===== Text tiers ===== -->
+    <SolidColorBrush x:Key="TextPrimary" Color="#DDDDDD"/>
+    <SolidColorBrush x:Key="MutedText"   Color="#AAAAAA"/>
+
+    <!-- ===== Status accents ===== -->
+    <SolidColorBrush x:Key="StatusErr"  Color="#FF8080"/>
+    <SolidColorBrush x:Key="StatusWarn" Color="#FFC833"/>
+
+    <!-- ===== Button role brushes (per-device + bulk command surfaces) =====
+         KILL / KILL ALL = danger; Allow 30m = allow-green (plus the split
+         dropdown chevron); Clear / CLEAR ALL = neutral; the per-device mode
+         toggle carries two states (blocklist blue-grey, whitelist amber). -->
+    <SolidColorBrush x:Key="BtnDangerBg"            Color="#C03030"/>
+    <SolidColorBrush x:Key="BtnDangerBorder"        Color="#801818"/>
+    <SolidColorBrush x:Key="BtnAllowBg"             Color="#339944"/>
+    <SolidColorBrush x:Key="BtnAllowBorder"         Color="#1F6629"/>
+    <SolidColorBrush x:Key="BtnAllowSplitBg"        Color="#2A7A38"/>
+    <SolidColorBrush x:Key="BtnNeutralBg"           Color="#55555A"/>
+    <SolidColorBrush x:Key="BtnNeutralBorder"       Color="#33333A"/>
+    <SolidColorBrush x:Key="BtnModeBlocklistBg"     Color="#446677"/>
+    <SolidColorBrush x:Key="BtnModeBlocklistBorder" Color="#2E4858"/>
+    <SolidColorBrush x:Key="BtnModeWhitelistBg"     Color="#996610"/>
+    <SolidColorBrush x:Key="BtnModeWhitelistBorder" Color="#6A4708"/>
+
+    <!-- ===== Log tail: LogKind dot / line colours + search highlight =====
+         Consumed by BOTH the LogTailPanel filter legend (Ellipse Fill) and
+         LogTailConverters.cs (resolved by key from these app resources), so the
+         legend dot and the log line always share one colour source. -->
+    <SolidColorBrush x:Key="LogKindBlock"    Color="#E55050"/>
+    <SolidColorBrush x:Key="LogKindAllow"    Color="#33CC66"/>
+    <SolidColorBrush x:Key="LogKindOverride" Color="#FFC833"/>
+    <SolidColorBrush x:Key="LogKindTick"     Color="#999999"/>
+    <SolidColorBrush x:Key="LogKindInstall"  Color="#60A0E0"/>
+    <SolidColorBrush x:Key="LogKindError"    Color="#FF4040"/>
+    <SolidColorBrush x:Key="LogKindOther"    Color="#888888"/>
+    <SolidColorBrush x:Key="LogKindDns"      Color="#3DBED9"/>
+    <SolidColorBrush x:Key="SearchHighlight" Color="#55FFE040"/>
+
+</ResourceDictionary>

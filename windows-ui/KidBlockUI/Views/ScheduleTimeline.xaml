@@ -13,8 +13,8 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Row="0" Grid.Column="0" Background="#1E1E1E"
-                BorderBrush="#3F3F46" BorderThickness="1,1,0,1"
+        <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource BgWindow}"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1,1,0,1"
                 ClipToBounds="True">
             <Canvas x:Name="ProfileLabels"
                     Background="Transparent"
@@ -25,8 +25,8 @@
                     VerticalAlignment="Stretch"/>
         </Border>
 
-        <Border Grid.Row="0" Grid.Column="1" Background="#163B16"
-                BorderBrush="#3F3F46" BorderThickness="1"
+        <Border Grid.Row="0" Grid.Column="1" Background="{StaticResource TimelineCanvasBg}"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"
                 ClipToBounds="True">
             <Canvas x:Name="TimelineCanvas"
                     Background="Transparent"
@@ -38,7 +38,7 @@
         </Border>
 
         <Canvas Grid.Row="1" Grid.Column="1" x:Name="HourAxis"
-                Background="#1E1E1E"
+                Background="{StaticResource BgWindow}"
                 ClipToBounds="True"
                 SizeChanged="HourAxis_SizeChanged"/>
     </Grid>

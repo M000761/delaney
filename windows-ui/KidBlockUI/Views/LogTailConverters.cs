@@ -7,60 +7,67 @@ using KidBlockUI.Models;
 
 namespace KidBlockUI.Views;
 
-public sealed class LogKindToBrushConverter : IValueConverter
+// DM15: the LogKind dot/line colours and the search-highlight brush now live in
+// Themes/Theme.xaml, the single semantic-token source of truth. These converters
+// resolve the brushes BY KEY from the merged application resources at convert
+// time, so the LogTailPanel filter legend (Ellipse Fill) and the live log lines
+// always share one colour source. A frozen fallback covers the design-time /
+// no-Application case so a converter never returns null.
+internal static class ThemeBrush
 {
-    public static readonly SolidColorBrush Block        = new(Color.FromRgb(0xE5, 0x50, 0x50));
-    public static readonly SolidColorBrush Allow        = new(Color.FromRgb(0x33, 0xCC, 0x66));
-    public static readonly SolidColorBrush Override     = new(Color.FromRgb(0xFF, 0xC8, 0x33));
-    public static readonly SolidColorBrush ScheduleTick = new(Color.FromRgb(0x99, 0x99, 0x99));
-    public static readonly SolidColorBrush Install      = new(Color.FromRgb(0x60, 0xA0, 0xE0));
-    public static readonly SolidColorBrush Error        = new(Color.FromRgb(0xFF, 0x40, 0x40));
-    public static readonly SolidColorBrush Other        = new(Color.FromRgb(0x88, 0x88, 0x88));
-    // DM10 spike: cyan, distinct from the seven existing colors.
-    public static readonly SolidColorBrush Dns          = new(Color.FromRgb(0x3D, 0xBE, 0xD9));
+    public static readonly SolidColorBrush Transparent = Frozen(Colors.Transparent);
+    private static readonly SolidColorBrush Neutral = Frozen(Colors.Gray);
 
-    static LogKindToBrushConverter()
+    private static SolidColorBrush Frozen(Color c)
     {
-        Block.Freeze(); Allow.Freeze(); Override.Freeze(); ScheduleTick.Freeze();
-        Install.Freeze(); Error.Freeze(); Other.Freeze(); Dns.Freeze();
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
     }
 
+    // LogKind dot/line colour by key; a visible neutral grey if resources are
+    // unavailable (design-time / no Application).
+    public static Brush Kind(string key)
+        => Application.Current?.TryFindResource(key) as Brush ?? Neutral;
+
+    // Search-highlight brush; transparent (no highlight) if resources are unavailable.
+    public static Brush Highlight()
+        => Application.Current?.TryFindResource("SearchHighlight") as Brush ?? Transparent;
+}
+
+public sealed class LogKindToBrushConverter : IValueConverter
+{
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is LogKind k ? k switch
         {
-            LogKind.Block        => Block,
-            LogKind.Allow        => Allow,
-            LogKind.Override     => Override,
-            LogKind.ScheduleTick => ScheduleTick,
-            LogKind.Install      => Install,
-            LogKind.Error        => Error,
-            LogKind.Dns          => Dns,
-            _                    => Other,
-        } : (object)Other;
+            LogKind.Block        => ThemeBrush.Kind("LogKindBlock"),
+            LogKind.Allow        => ThemeBrush.Kind("LogKindAllow"),
+            LogKind.Override     => ThemeBrush.Kind("LogKindOverride"),
+            LogKind.ScheduleTick => ThemeBrush.Kind("LogKindTick"),
+            LogKind.Install      => ThemeBrush.Kind("LogKindInstall"),
+            LogKind.Error        => ThemeBrush.Kind("LogKindError"),
+            LogKind.Dns          => ThemeBrush.Kind("LogKindDns"),
+            _                    => ThemeBrush.Kind("LogKindOther"),
+        } : ThemeBrush.Kind("LogKindOther");
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
 
 // MultiBinding converter: (message, searchText) -> highlight Brush.
-// Yellow-translucent when searchText is non-empty AND message contains it.
+// SearchHighlight (translucent yellow) when searchText is non-empty AND message
+// contains it; Transparent otherwise.
 public sealed class SearchHighlightConverter : IMultiValueConverter
 {
-    public static readonly SolidColorBrush Match = new(Color.FromArgb(0x55, 0xFF, 0xE0, 0x40));
-    public static readonly SolidColorBrush None  = new(Colors.Transparent);
-
-    static SearchHighlightConverter()
-    {
-        Match.Freeze(); None.Freeze();
-    }
-
     public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (values is null || values.Length < 2) return None;
+        if (values is null || values.Length < 2) return ThemeBrush.Transparent;
         var msg = values[0] as string ?? string.Empty;
         var needle = values[1] as string ?? string.Empty;
-        if (needle.Length == 0) return None;
-        return msg.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0 ? Match : None;
+        if (needle.Length == 0) return ThemeBrush.Transparent;
+        return msg.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0
+            ? ThemeBrush.Highlight()
+            : ThemeBrush.Transparent;
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, CultureInfo culture)

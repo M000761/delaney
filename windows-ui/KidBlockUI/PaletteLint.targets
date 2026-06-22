@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+      DM15 (DM13 program, Stage 1) palette lint gate. Modelled on boat's BM217
+      PaletteLint.targets.
+
+      Fails the build when a NEW inline Foreground/Background hex literal lands in
+      Views/*.xaml (attribute form or Style-Setter form; XML comments are stripped
+      first), so command-surface growth stops minting fresh inline hex. The
+      sanctioned residue is frozen in palette-lint-allowlist.txt; anything beyond it
+      must use a Themes/Theme.xaml semantic key (surfaces / text tiers / status
+      accents / Btn* role sets / LogKind colours).
+
+      Regenerate the frozen baseline (after deliberately sanctioning residue):
+        dotnet build -p:PaletteLintWriteBaseline=true
+
+      The gate emits a ratchet hint (not an error) when residue shrinks, so the
+      baseline only ever tightens.
+  -->
+
+  <PropertyGroup>
+    <PaletteLintWriteBaseline Condition="'$(PaletteLintWriteBaseline)' == ''">false</PaletteLintWriteBaseline>
+  </PropertyGroup>
+
+  <UsingTask TaskName="PaletteLintTask"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ViewsDir ParameterType="System.String" Required="true" />
+      <AllowlistFile ParameterType="System.String" Required="true" />
+      <WriteBaseline ParameterType="System.Boolean" Required="false" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs">
+<![CDATA[
+var attrRe    = new Regex("(Foreground|Background)\\s*=\\s*\"(#[0-9A-Fa-f]{3,8})\"");
+var setterRe  = new Regex("Property\\s*=\\s*\"(?:TextElement\\.)?(Foreground|Background)\"\\s+Value\\s*=\\s*\"(#[0-9A-Fa-f]{3,8})\"");
+var commentRe = new Regex("<!--.*?-->", RegexOptions.Singleline);
+
+var found = new SortedDictionary<string, int>(StringComparer.Ordinal);
+foreach (var file in Directory.EnumerateFiles(ViewsDir, "*.xaml", SearchOption.AllDirectories))
+{
+    var rel = file.Substring(ViewsDir.Length).TrimStart('\\', '/').Replace('\\', '/');
+    var text = commentRe.Replace(File.ReadAllText(file), "");
+    foreach (Match m in attrRe.Matches(text))
+    {
+        var key = rel + "|ATTR|" + m.Groups[1].Value + "|" + m.Groups[2].Value.ToUpperInvariant();
+        int c; found.TryGetValue(key, out c); found[key] = c + 1;
+    }
+    foreach (Match m in setterRe.Matches(text))
+    {
+        var key = rel + "|SETTER|" + m.Groups[1].Value + "|" + m.Groups[2].Value.ToUpperInvariant();
+        int c; found.TryGetValue(key, out c); found[key] = c + 1;
+    }
+}
+
+if (WriteBaseline)
+{
+    var outLines = new List<string>
+    {
+        "# DM15 palette-lint frozen allowlist. One line per sanctioned residue:",
+        "#   <views-relative-path>|<ATTR or SETTER>|<Foreground or Background>|<#HEX>|<count>",
+        "# Regenerate (deliberately) with: dotnet build -p:PaletteLintWriteBaseline=true",
+    };
+    outLines.AddRange(found.Select(kv => kv.Key + "|" + kv.Value));
+    File.WriteAllLines(AllowlistFile, outLines);
+    Log.LogMessage(MessageImportance.High,
+        "PaletteLint: baseline written to " + AllowlistFile + " (" + found.Count + " entries, " + found.Values.Sum() + " literals).");
+}
+else
+{
+    var allowed = new Dictionary<string, int>(StringComparer.Ordinal);
+    if (File.Exists(AllowlistFile))
+    {
+        foreach (var line in File.ReadAllLines(AllowlistFile))
+        {
+            if (line.Length == 0 || line.StartsWith("#")) continue;
+            var idx = line.LastIndexOf('|');
+            if (idx <= 0) continue;
+            int n;
+            if (int.TryParse(line.Substring(idx + 1), out n)) allowed[line.Substring(0, idx)] = n;
+        }
+    }
+    else
+    {
+        Log.LogError("PaletteLint: allowlist not found at " + AllowlistFile + ". Generate it with: dotnet build -p:PaletteLintWriteBaseline=true");
+    }
+
+    foreach (var kv in found)
+    {
+        int cap;
+        if (!allowed.TryGetValue(kv.Key, out cap))
+        {
+            Log.LogError("PaletteLint: NEW inline palette literal Views/" + kv.Key.Replace("|", " | ") + " (" + kv.Value
+                + "x). Use a Themes/Theme.xaml semantic key (surfaces / text tiers / status accents / Btn* sets / LogKind); if this colour is genuinely semantic, regenerate the frozen allowlist deliberately with -p:PaletteLintWriteBaseline=true");
+        }
+        else if (kv.Value > cap)
+        {
+            Log.LogError("PaletteLint: inline palette literal count grew for Views/" + kv.Key.Replace("|", " | ")
+                + ": allowed " + cap + ", found " + kv.Value + ". Point the new usage at a Themes/Theme.xaml key.");
+        }
+        else if (kv.Value < cap)
+        {
+            Log.LogMessage(MessageImportance.Normal,
+                "PaletteLint ratchet: Views/" + kv.Key + " shrank " + cap + " -> " + kv.Value + "; tighten the baseline when convenient.");
+        }
+    }
+    foreach (var key in allowed.Keys.Where(k => !found.ContainsKey(k)))
+    {
+        Log.LogMessage(MessageImportance.Normal,
+            "PaletteLint ratchet: Views/" + key + " no longer present; tighten the baseline when convenient.");
+    }
+    if (!Log.HasLoggedErrors)
+    {
+        Log.LogMessage(MessageImportance.High,
+            "PaletteLint: gate green (" + found.Values.Sum() + " frozen literals across " + found.Count + " entries).");
+    }
+}
+]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <!-- The _wpftmp guard keeps the gate out of the WPF markup-compile inner build. -->
+  <Target Name="PaletteLintGate"
+          BeforeTargets="PrepareForBuild"
+          Condition="!$(MSBuildProjectName.EndsWith('_wpftmp'))">
+    <PaletteLintTask ViewsDir="$(MSBuildProjectDirectory)\Views"
+                     AllowlistFile="$(MSBuildProjectDirectory)\palette-lint-allowlist.txt"
+                     WriteBaseline="$(PaletteLintWriteBaseline)" />
+  </Target>
+
+</Project>

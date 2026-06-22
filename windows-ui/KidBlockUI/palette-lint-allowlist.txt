@@ -1,0 +1,8 @@
+# DM15 palette-lint frozen allowlist. One line per sanctioned residue:
+#   <views-relative-path>|<ATTR or SETTER>|<Foreground or Background>|<#HEX>|<count>
+# Regenerate (deliberately) with: dotnet build -p:PaletteLintWriteBaseline=true
+ApplyConfirmDialog.xaml|ATTR|Background|#1E1E1E|1
+ApplyConfirmDialog.xaml|ATTR|Foreground|#DDDDDD|2
+ScheduleEditDialog.xaml|ATTR|Background|#1E1E1E|1
+ScheduleEditDialog.xaml|ATTR|Foreground|#DDDDDD|1
+ScheduleEditDialog.xaml|ATTR|Foreground|#E06060|1

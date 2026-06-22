@@ -5,8 +5,8 @@
     <!-- DM9: bulk-action bar above the Devices DataGrid for the bedtime use case.
          Per-row buttons (KILL/Allow 30m/Clear) act per-MAC; these act over the
          full kidblock-macs.conf set in one shell call. -->
-    <Border Background="#2D2D30"
-            BorderBrush="#3F3F46"
+    <Border Background="{StaticResource PaneHeaderBg}"
+            BorderBrush="{StaticResource BorderSubtle}"
             BorderThickness="0,0,0,1"
             Padding="10,6">
         <Grid>
@@ -20,16 +20,16 @@
             </Grid.ColumnDefinitions>
 
             <TextBlock Grid.Column="0"
-                       Text="Bulk:" FontWeight="SemiBold" Foreground="#AAAAAA"
+                       Text="Bulk:" FontWeight="SemiBold" Foreground="{StaticResource MutedText}"
                        VerticalAlignment="Center" Margin="0,0,10,0"/>
 
             <Button Grid.Column="1"
                     Content="KILL ALL"
                     Command="{Binding BulkKillCommand}"
-                    Background="#C03030" Foreground="White"
+                    Background="{StaticResource BtnDangerBg}" Foreground="White"
                     FontWeight="Bold" FontSize="13"
                     Padding="14,5" Margin="0,0,8,0"
-                    BorderBrush="#801818" BorderThickness="1"
+                    BorderBrush="{StaticResource BtnDangerBorder}" BorderThickness="1"
                     ToolTip="Block ALL controlled devices for up to 24h (confirm-gated, bedtime use case)"/>
 
             <Grid Grid.Column="2" Margin="0,0,8,0">
@@ -39,20 +39,20 @@
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="0" Content="ALLOW 30m ALL"
                         Command="{Binding BulkAllowCommand}"
-                        Background="#339944" Foreground="White"
+                        Background="{StaticResource BtnAllowBg}" Foreground="White"
                         Padding="14,5"
-                        BorderBrush="#1F6629" BorderThickness="1,1,0,1"
+                        BorderBrush="{StaticResource BtnAllowBorder}" BorderThickness="1,1,0,1"
                         ToolTip="Allow ALL controlled devices online for 30 minutes (router-wide override)"/>
                 <ToggleButton Grid.Column="1" x:Name="BulkAllowSplit"
                               Content="&#x25BC;"
-                              Background="#2A7A38" Foreground="White"
+                              Background="{StaticResource BtnAllowSplitBg}" Foreground="White"
                               FontSize="9" Padding="6,5"
-                              BorderBrush="#1F6629" BorderThickness="0,1,1,1"
+                              BorderBrush="{StaticResource BtnAllowBorder}" BorderThickness="0,1,1,1"
                               ToolTip="Pick an allow duration for ALL devices: 15m / 30m / 45m / 1-8h"/>
                 <Popup PlacementTarget="{Binding ElementName=BulkAllowSplit}" Placement="Bottom"
                        IsOpen="{Binding IsChecked, ElementName=BulkAllowSplit, Mode=TwoWay}"
                        StaysOpen="False">
-                    <Border Background="#2D2D30" BorderBrush="#3F3F46" BorderThickness="1">
+                    <Border Background="{StaticResource PaneHeaderBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1">
                         <ItemsControl ItemsSource="{x:Static r:AllowDurations.Presets}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -75,14 +75,14 @@
             <Button Grid.Column="3"
                     Content="CLEAR ALL"
                     Command="{Binding BulkClearCommand}"
-                    Background="#55555A" Foreground="White"
+                    Background="{StaticResource BtnNeutralBg}" Foreground="White"
                     Padding="14,5"
-                    BorderBrush="#33333A" BorderThickness="1"
+                    BorderBrush="{StaticResource BtnNeutralBorder}" BorderThickness="1"
                     ToolTip="Clear all active per-MAC overrides; every device returns to the schedule"/>
 
             <TextBlock Grid.Column="5"
                        Text="{Binding OverridesSummary}"
-                       Foreground="#FFC833"
+                       Foreground="{StaticResource StatusWarn}"
                        FontStyle="Italic"
                        VerticalAlignment="Center"/>
         </Grid>

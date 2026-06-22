@@ -1,5 +1,15 @@
 <Application x:Class="KidBlockUI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Application.Resources/>
+    <Application.Resources>
+        <!-- DM15: merge the FluentDark-aligned semantic-token layer app-wide so
+             every bespoke surface (and LogTailConverters.cs) resolves one source
+             of truth. SfSkinManager.ApplyThemeAsDefaultStyle (App.OnStartup) themes
+             the Syncfusion + standard WPF controls; this covers the bespoke hex. -->
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>
