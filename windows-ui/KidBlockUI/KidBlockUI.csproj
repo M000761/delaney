@@ -27,4 +27,20 @@
     </None>
   </ItemGroup>
 
+  <!-- Syncfusion WPF v33.2.13 substrate for the KidBlockUI Ribbon/dock-shell migration
+       (DM13 program, Stage 0 / DM14; Community edition). Ribbon (Tools.WPF), SfDataGrid
+       (SfGrid.WPF), SfSkinManager + the FluentDark theme, Licensing, Shared.WPF;
+       Syncfusion.Data.WPF comes transitively. The v33 Community licence registers at
+       startup from a NON-tracked source (the SYNCFUSION_LICENSE_KEY env var or the
+       gitignored syncfusion-license.key); it is never hardcoded. Syncfusion HOSTS the
+       existing bespoke controls, it does not replace them. -->
+  <ItemGroup>
+    <PackageReference Include="Syncfusion.Tools.WPF" Version="33.2.13" />
+    <PackageReference Include="Syncfusion.SfGrid.WPF" Version="33.2.13" />
+    <PackageReference Include="Syncfusion.SfSkinManager.WPF" Version="33.2.13" />
+    <PackageReference Include="Syncfusion.Themes.FluentDark.WPF" Version="33.2.13" />
+    <PackageReference Include="Syncfusion.Licensing" Version="33.2.13" />
+    <PackageReference Include="Syncfusion.Shared.WPF" Version="33.2.13" />
+  </ItemGroup>
+
 </Project>

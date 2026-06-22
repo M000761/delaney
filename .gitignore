@@ -10,3 +10,7 @@ obj/
 
 # OS junk
 Thumbs.db
+
+# Syncfusion v33 Community licence key. NEVER commit; the app reads it from the
+# SYNCFUSION_LICENSE_KEY env var or this file at startup.
+syncfusion-license.key
