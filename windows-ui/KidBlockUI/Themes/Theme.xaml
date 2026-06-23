@@ -41,9 +41,13 @@
     <SolidColorBrush x:Key="TextPrimary" Color="#DDDDDD"/>
     <SolidColorBrush x:Key="MutedText"   Color="#AAAAAA"/>
 
-    <!-- ===== Status accents ===== -->
-    <SolidColorBrush x:Key="StatusErr"  Color="#FF8080"/>
-    <SolidColorBrush x:Key="StatusWarn" Color="#FFC833"/>
+    <!-- ===== Status accents =====
+         StatusErrStrong is the dialog error-text red (ScheduleEditDialog
+         ErrorText); a stronger red than StatusErr, value-preserved from the
+         DM19 dialog rebase so the dialogs render the same pixels as before. -->
+    <SolidColorBrush x:Key="StatusErr"       Color="#FF8080"/>
+    <SolidColorBrush x:Key="StatusErrStrong" Color="#E06060"/>
+    <SolidColorBrush x:Key="StatusWarn"      Color="#FFC833"/>
 
     <!-- ===== Button role brushes (per-device + bulk command surfaces) =====
          KILL / KILL ALL = danger; Allow 30m = allow-green (plus the split

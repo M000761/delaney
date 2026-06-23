@@ -6,8 +6,8 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
-        Background="#1E1E1E"
-        Foreground="#DDDDDD"
+        Background="{StaticResource BgWindow}"
+        Foreground="{StaticResource TextPrimary}"
         FontFamily="Segoe UI">
     <Grid Margin="14">
         <Grid.RowDefinitions>
@@ -37,7 +37,7 @@
 
         <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
                    x:Name="ErrorText"
-                   Foreground="#E06060" Margin="0,8,0,0"
+                   Foreground="{StaticResource StatusErrStrong}" Margin="0,8,0,0"
                    TextWrapping="Wrap"/>
 
         <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"

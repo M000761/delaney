@@ -5,14 +5,9 @@
         Width="520" Height="420"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#1E1E1E"
-        Foreground="#DDDDDD"
+        Background="{StaticResource BgWindow}"
+        Foreground="{StaticResource TextPrimary}"
         FontFamily="Segoe UI">
-    <Window.Resources>
-        <SolidColorBrush x:Key="PaneBg"       Color="#252526"/>
-        <SolidColorBrush x:Key="PaneHeaderBg" Color="#2D2D30"/>
-        <SolidColorBrush x:Key="BorderSubtle" Color="#3F3F46"/>
-    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -26,7 +21,7 @@
         </Border>
 
         <ListBox x:Name="DiffList" Grid.Row="1"
-                 Background="{StaticResource PaneBg}" Foreground="#DDDDDD"
+                 Background="{StaticResource PaneBg}" Foreground="{StaticResource TextPrimary}"
                  BorderThickness="0" Padding="6"
                  HorizontalContentAlignment="Stretch">
             <ListBox.ItemTemplate>
