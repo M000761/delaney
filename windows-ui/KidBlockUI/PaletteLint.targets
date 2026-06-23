@@ -69,7 +69,10 @@ if (WriteBaseline)
         "# Regenerate (deliberately) with: dotnet build -p:PaletteLintWriteBaseline=true",
     };
     outLines.AddRange(found.Select(kv => kv.Key + "|" + kv.Value));
-    File.WriteAllLines(AllowlistFile, outLines);
+    // LF explicitly (not File.WriteAllLines, which emits the host's platform-default
+    // newline). delaney is a pure-LF tree with no .gitattributes, so a CRLF write here
+    // would drift palette-lint-allowlist.txt and need a manual normalisation (DM20).
+    File.WriteAllText(AllowlistFile, string.Join("\n", outLines) + "\n");
     Log.LogMessage(MessageImportance.High,
         "PaletteLint: baseline written to " + AllowlistFile + " (" + found.Count + " entries, " + found.Values.Sum() + " literals).");
 }
