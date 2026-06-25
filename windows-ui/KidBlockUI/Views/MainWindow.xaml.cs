@@ -35,6 +35,23 @@ public partial class MainWindow : Window
                 .ToList();
             return ApplyConfirmDialog.Show(this, title, lines, "KILL");
         };
+        // DM22: open the per-MAC Why? popover (its own SSH session + 5s auto-refresh,
+        // torn down on Close). Modal, owner-centred, mirroring the ApplyConfirmDialog idiom.
+        _vm.WhyRequested = row =>
+        {
+            var dlg = new WhyBlockedDialog(_vm.Config, row.Mac, row.Name) { Owner = this };
+            dlg.ShowDialog();
+        };
+        // DM22: pin-show the DM17 Live Log dock pane when "Filter log to this MAC" fires,
+        // recovering it from auto-hide / float so the filtered result is visible.
+        _vm.ShowLogPaneRequested = () =>
+        {
+            try { DockingManager.SetState(LogPane, DockState.Dock); }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DockingManager: pin-show LogPane failed: {ex.Message}");
+            }
+        };
         DataContext = _vm;
         Loaded += async (_, _) =>
         {

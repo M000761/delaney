@@ -152,4 +152,12 @@ public sealed partial class DeviceRowViewModel : ObservableObject
 
     [RelayCommand]
     private Task ToggleModeAsync(CancellationToken ct) => _parent.ToggleDeviceModeAsync(this, ct);
+
+    // DM22: open the per-MAC Why? popover (effective-verdict explainer) for this device.
+    [RelayCommand]
+    private void Why() => _parent.RequestWhy(this);
+
+    // DM22: filter the Live log to just this device's MAC + pin-show the log pane.
+    [RelayCommand]
+    private void FilterLogToMe() => _parent.FilterLogToMac(this);
 }

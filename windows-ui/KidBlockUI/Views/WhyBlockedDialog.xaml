@@ -1,0 +1,122 @@
+<Window x:Class="KidBlockUI.Views.WhyBlockedDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding Title}"
+        Width="560" Height="620"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource BgWindow}"
+        Foreground="{StaticResource TextPrimary}"
+        FontFamily="Segoe UI">
+    <!-- DM22: per-MAC effective-verdict popover. Mirrors ApplyConfirmDialog's 3-row
+         (header / content / footer) token-shaped Window. The header band is green for
+         ALLOWED, red for BLOCKED, neutral while the first query is in flight; chrome
+         resolves Theme.xaml semantic tokens only (no inline hex), so PaletteLint stays
+         green. Auto-refreshes every 5s; cancellable on Close. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Verdict header band -->
+        <Border Grid.Row="0" Padding="16,12"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{StaticResource PaneHeaderBg}"/>
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding HasVerdict}" Value="True"/>
+                                <Condition Binding="{Binding IsAllowed}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Background" Value="{StaticResource BtnAllowBg}"/>
+                        </MultiDataTrigger>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding HasVerdict}" Value="True"/>
+                                <Condition Binding="{Binding IsAllowed}" Value="False"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Background" Value="{StaticResource BtnDangerBg}"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel>
+                <TextBlock Text="{Binding HeaderText}" FontSize="22" FontWeight="Bold"
+                           Foreground="White" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding ReasonText}" FontSize="13"
+                           Foreground="White" Margin="0,3,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Content: 3-chain walk + recent log -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      Background="{StaticResource PaneBg}" Padding="14,10">
+            <StackPanel>
+                <TextBlock Text="Chain walk (FORWARD visit order)"
+                           FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <ItemsControl ItemsSource="{Binding Chains}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="8,5" Margin="0,0,0,4" CornerRadius="3"
+                                    Background="{StaticResource PaneHeaderBg}"
+                                    BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="11" Height="11" Margin="0,0,10,0"
+                                             VerticalAlignment="Center" Fill="{Binding DotBrush}"/>
+                                    <StackPanel>
+                                        <TextBlock>
+                                            <Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold"/>
+                                            <Run Text="   "/>
+                                            <Run Text="{Binding RuleTypeText, Mode=OneWay}"
+                                                 Foreground="{StaticResource StatusWarn}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="11" Foreground="{StaticResource MutedText}"
+                                                   FontFamily="Consolas">
+                                            <Run Text="{Binding PresentText, Mode=OneWay}"/>
+                                            <Run Text="    "/>
+                                            <Run Text="{Binding CountersText, Mode=OneWay}"/>
+                                            <Run Text="    "/>
+                                            <Run Text="{Binding IpsetText, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Recent log (last 10 for this MAC)"
+                           FontWeight="SemiBold" Margin="0,12,0,6"/>
+                <Border Background="{StaticResource LogSurfaceBg}"
+                        BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"
+                        Padding="10,8">
+                    <TextBlock Text="{Binding RecentLogText}"
+                               FontFamily="Consolas" FontSize="11"
+                               Foreground="{StaticResource TextPrimary}"
+                               TextWrapping="NoWrap"/>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer: status + Refresh / Close -->
+        <Border Grid.Row="2" Background="{StaticResource PaneHeaderBg}" Padding="12,8"
+                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
+            <Grid>
+                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource MutedText}"
+                           FontStyle="Italic" VerticalAlignment="Center"
+                           HorizontalAlignment="Left" TextTrimming="CharacterEllipsis"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Refresh" Command="{Binding RefreshCommand}"
+                            Padding="16,4" Margin="0,0,8,0"
+                            ToolTip="Re-query the router for this device's verdict now."/>
+                    <Button Content="Close" Padding="16,4"
+                            IsCancel="True" IsDefault="True" Click="CloseButton_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

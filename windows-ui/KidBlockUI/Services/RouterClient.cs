@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using KidBlockUI.Models;
 using Renci.SshNet;
@@ -25,6 +27,35 @@ public enum OverrideVerb { None, Block, Allow }
 // expires (router-side epoch, parsed UTC); the UI uses this to render the
 // per-row "BLOCKED-until-HH:MM" / "ALLOWED-until-HH:MM" badge.
 public sealed record OverrideEntry(string Mac, OverrideVerb Verb, int Minutes, System.DateTimeOffset ExpiryUtc);
+
+// DM22: one chain row of `kidblock.sh explain-mac --json`. The router walks the
+// kidblock chains in actual FORWARD visit order; each row reports whether this MAC
+// has a rule in that chain plus its live packet/byte counters and any ipset hint.
+public sealed record MacVerdictChain(
+    [property: JsonPropertyName("name")]             string Name,
+    [property: JsonPropertyName("mac_rule_present")] bool MacRulePresent,
+    [property: JsonPropertyName("rule_type")]        string? RuleType,
+    [property: JsonPropertyName("pkts")]             long Pkts,
+    [property: JsonPropertyName("bytes")]            long Bytes,
+    [property: JsonPropertyName("ipset_hint")]       string? IpsetHint);
+
+// DM22: parsed `kidblock.sh explain-mac --json <mac> [<dst>]` output. The effective
+// verdict (ALLOWED / BLOCKED) is the first chain that terminally catches the MAC in
+// FORWARD visit order; Chains carries the full walk and RecentLog the last 10
+// kidblock.log lines for the MAC. Read-only on the router (iptables -nvL + ipset test
+// + log grep); the UI Why? dialog polls it on a 5s timer.
+public sealed record MacVerdict(
+    [property: JsonPropertyName("mac")]            string Mac,
+    [property: JsonPropertyName("dst_ip")]         string? DstIp,
+    [property: JsonPropertyName("verdict")]        string Verdict,
+    [property: JsonPropertyName("verdict_chain")]  string? VerdictChain,
+    [property: JsonPropertyName("verdict_reason")] string? VerdictReason,
+    [property: JsonPropertyName("verdict_detail")] string? VerdictDetail,
+    [property: JsonPropertyName("chains")]         IReadOnlyList<MacVerdictChain>? Chains,
+    [property: JsonPropertyName("recent_log")]     IReadOnlyList<string>? RecentLog)
+{
+    public bool IsAllowed => string.Equals(Verdict, "ALLOWED", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed class RouterClient : IDisposable
 {
@@ -267,6 +298,42 @@ public sealed class RouterClient : IDisposable
     // boundary. MacRx already validates the input shape; this strip is defensive.
     private static string EscapeMac(string mac) =>
         new string(mac.Where(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == ':').ToArray()).ToLowerInvariant();
+
+    // Only IPv4/IPv6 literal characters survive the shell-substitution boundary for the
+    // optional explain-mac dst-ip argument (defensive; the UI only ever passes a lease IP).
+    private static string SanitizeIp(string ip) =>
+        new string(ip.Where(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '.' || c == ':').ToArray());
+
+    private static readonly JsonSerializerOptions ExplainJsonOpts = new() { PropertyNameCaseInsensitive = true };
+
+    // DM22: ssh-exec `kidblock.sh explain-mac --json <mac> [<dst>]` and deserialise to
+    // MacVerdict. READ-ONLY on the router (asserted by router/tests/test_explain_mac.sh).
+    // The CancellationToken flows through RunAsync so a Why? dialog closed mid-poll tears
+    // the SSH command down rather than leaving a hanging session.
+    public async Task<MacVerdict> ExplainMacAsync(string mac, string? dstIp = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(mac) || !MacRx.IsMatch(mac))
+            throw new ArgumentException("MAC must be aa:bb:cc:dd:ee:ff form.", nameof(mac));
+
+        var command = $"sudo {_config.ScriptPath} explain-mac --json {EscapeMac(mac)}";
+        if (!string.IsNullOrWhiteSpace(dstIp))
+        {
+            var safeIp = SanitizeIp(dstIp!);
+            if (safeIp.Length > 0) command += $" {safeIp}";
+        }
+
+        var raw = await RunAsync(command, ct).ConfigureAwait(false);
+        // Be tolerant of any sudo/login banner around the single JSON line.
+        var start = raw.IndexOf('{');
+        var end = raw.LastIndexOf('}');
+        if (start < 0 || end < start)
+            throw new InvalidOperationException(
+                $"explain-mac returned no JSON: {raw.Trim()}");
+        var json = raw.Substring(start, end - start + 1);
+
+        return JsonSerializer.Deserialize<MacVerdict>(json, ExplainJsonOpts)
+               ?? throw new InvalidOperationException("explain-mac returned unparseable JSON.");
+    }
 
     public async Task<RouterState> GetStatusAsync(CancellationToken ct = default)
     {

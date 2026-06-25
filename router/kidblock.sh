@@ -53,6 +53,13 @@ IPSET_ALLOW_V6="kidblock_allow_v6"
 DNSMASQ_CONF="/etc/dnsmasq.d/kidblock-domains.conf"
 DNSMASQ_ALLOW_CONF="/etc/dnsmasq.d/kidblock-allowlist.conf"
 
+# explain-mac (DM22) read-only inputs. Env-overridable so router/tests/test_explain_mac.sh
+# can point them at fixtures without root and without touching /var/log or /etc; the
+# defaults are the live router paths so deployed behaviour is unchanged.
+EXPLAIN_KIDBLOCK_LOG="${EXPLAIN_KIDBLOCK_LOG:-$LOG_FILE}"
+EXPLAIN_MESSAGES_LOG="${EXPLAIN_MESSAGES_LOG:-/var/log/messages}"
+EXPLAIN_DOMAIN_CONF="${EXPLAIN_DOMAIN_CONF:-$DOMAIN_CONF}"
+
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE" 2>/dev/null || true; }
 
 # Lowercased MAC (canonicalize so MAC_CONF + OVERRIDE_CONF keying matches regardless
@@ -752,11 +759,334 @@ cmd_uninstall_allowlist() {
   echo "Per-device whitelist removed. Whitelist MACs now unrestricted (subject to schedule + blocklist)."
 }
 
+# ==========================================================================
+# Per-MAC effective-verdict observability (DM22)
+# ==========================================================================
+#
+# explain-mac <MAC> [<dst-ip>] [--json]
+#
+# READ-ONLY by construction: only iptables -nvL / -S, ipset test, and log greps
+# are used; no -A/-I/-D/-F/-N/-X, no ipset create/add/del, no reapply/init. The
+# read-only contract is asserted by router/tests/test_explain_mac.sh.
+#
+# Walks the kidblock chains in ACTUAL FORWARD visit order (read live, so the
+# answer reflects the deployed ordering even if it desyncs from ensure_chains'
+# intent), finds the first rule that matches the MAC in each, and resolves the
+# effective verdict + reason. With a <dst-ip> it also reports whether that IP is
+# in the domain/allow ipsets and (best-effort, from the live dnsmasq log) which
+# domain + kidblock-domains.conf category put it there.
+
+# JSON-escape stdin (backslash, doublequote, strip CR, drop other control chars).
+json_escape() {
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\r//g' -e 's/[[:cntrl:]]//g'
+}
+
+# First rule in <chain> (v4) matching <mac>, as "target pkts bytes ipset" (ipset
+# empty when the rule carries no match-set). Empty output => no rule for this MAC.
+explain_chain_first_rule() {
+  local chain="$1" mac="$2"
+  iptables -nvL "$chain" 2>/dev/null \
+    | grep -i -- "$mac" \
+    | head -1 \
+    | awk '{
+        ipset="";
+        for (i = 1; i <= NF; i++) if ($i == "match-set") { ipset = $(i+1); break }
+        print $3, $1, $2, ipset
+      }'
+}
+
+# Active override verb+expiry for <mac> as "verb expiry", or empty if none.
+explain_override_for_mac() {
+  local target; target=$(norm_mac "$1")
+  local row mac verb mins exp
+  while IFS= read -r row; do
+    [ -z "$row" ] && continue
+    set -- $row
+    mac="$1"; verb="$2"; mins="$3"; exp="$4"
+    [ "$mac" = "$target" ] && { echo "$verb $exp"; return; }
+  done < <(read_overrides)
+  echo ""
+}
+
+# True if <mac> is emitted by the list-producer named in $1 (get_macs / _blocklist / _whitelist).
+# Reads the whole producer (no short-circuit pipe) so a get_macs awk never takes SIGPIPE.
+explain_mac_in() {
+  local fn="$1" mac; mac=$(norm_mac "$2")
+  local m
+  while IFS= read -r m; do
+    [ "$m" = "$mac" ] && return 0
+  done < <("$fn")
+  return 1
+}
+
+# True if <ip> is a member of ipset <set>. Read-only (ipset test).
+explain_ip_in_set() {
+  ipset test "$1" "$2" >/dev/null 2>&1
+}
+
+# Domain that most recently resolved to <ip> in the live dnsmasq log (reply/cached
+# lines), or empty. Requires `log-queries` on the router; degrades to empty silently.
+explain_domain_for_ip() {
+  local ip="$1" ipre
+  ipre=$(printf '%s' "$ip" | sed 's/[.[]/\\&/g')
+  grep -hoE "(reply|cached) [^ ]+ is ${ipre}\$" "$EXPLAIN_MESSAGES_LOG" 2>/dev/null \
+    | tail -1 | awk '{print $2}'
+}
+
+# kidblock-domains.conf category for a (possibly sub-)domain, by suffix match
+# against the configured domains under each "# --- Category ---" section header.
+explain_category_for_domain() {
+  local q; q=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  awk -v q="$q" '
+    /^#[[:space:]]*---/ {
+      cat = $0
+      sub(/^#[[:space:]]*---[[:space:]]*/, "", cat)
+      sub(/[[:space:]]*---.*$/, "", cat)
+      next
+    }
+    /^#/ { next }
+    NF {
+      dom = tolower($1)
+      n = length(q); m = length(dom)
+      if (q == dom) { print cat; exit }
+      if (n > m && substr(q, n - m + 1) == dom && substr(q, n - m, 1) == ".") { print cat; exit }
+    }
+  ' "$EXPLAIN_DOMAIN_CONF" 2>/dev/null
+}
+
+# Human-readable "in <set> (added by dnsmasq resolving <domain> per
+# kidblock-domains.conf <category> category)" hint for a dst-ip already known to
+# be in <set>. Domain/category are best-effort from the live log.
+explain_ipset_hint() {
+  local ip="$1" set="$2" domain cat hint
+  hint="dst-IP $ip in $set set"
+  domain=$(explain_domain_for_ip "$ip")
+  if [ -n "$domain" ]; then
+    cat=$(explain_category_for_domain "$domain")
+    if [ -n "$cat" ]; then
+      hint="$hint (added by dnsmasq resolving $domain per kidblock-domains.conf $cat category)"
+    else
+      hint="$hint (added by dnsmasq resolving $domain)"
+    fi
+  fi
+  echo "$hint"
+}
+
+cmd_explain_mac() {
+  local as_json=0 mac="" dst=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --json) as_json=1 ;;
+      -*) echo "Usage: $0 explain-mac <MAC> [<dst-ip>] [--json]" >&2; exit 1 ;;
+      *)
+        if [ -z "$mac" ]; then mac="$1"
+        elif [ -z "$dst" ]; then dst="$1"
+        else echo "Usage: $0 explain-mac <MAC> [<dst-ip>] [--json]" >&2; exit 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$mac" ] || ! is_mac "$mac"; then
+    echo "Usage: $0 explain-mac <MAC> [<dst-ip>] [--json]" >&2
+    exit 1
+  fi
+  mac=$(norm_mac "$mac")
+
+  # dst-ip family (':' => IPv6) selects which ipsets to probe.
+  local fam="v4" dom_set="$IPSET_V4" allow_set="$IPSET_ALLOW_V4"
+  case "$dst" in
+    *:*) fam="v6"; dom_set="$IPSET_V6"; allow_set="$IPSET_ALLOW_V6" ;;
+  esac
+
+  # Shared facts.
+  local ov ov_verb="" ov_exp=""
+  ov=$(explain_override_for_mac "$mac")
+  if [ -n "$ov" ]; then ov_verb="${ov%% *}"; ov_exp="${ov##* }"; fi
+  # Global read by explain_rule_type() to label the KIDBLOCK_TIME DROP rule as
+  # override-block vs schedule-block in the chains[] array.
+  EXPLAIN_OV_VERB="$ov_verb"
+  local sched; sched=$(schedule_state_at "$(now_minutes)" "$(now_dow)")
+  local in_dom_set=0 in_allow_set=0
+  if [ -n "$dst" ]; then
+    explain_ip_in_set "$dom_set"   "$dst" && in_dom_set=1
+    explain_ip_in_set "$allow_set" "$dst" && in_allow_set=1
+  fi
+
+  # FORWARD visit order, restricted to the kidblock chains (live).
+  local order; order=$(iptables -S FORWARD 2>/dev/null | awk '/^-A FORWARD -j KIDBLOCK_/ {print $NF}')
+  [ -z "$order" ] && order="$CHAIN_TIME $CHAIN_DOMAINS $CHAIN_WHITELIST"
+
+  # Verdict resolution: first chain (in visit order) that terminally matches the MAC wins.
+  local verdict="ALLOWED" vchain="" vreason="default-allow" vdetail="no kidblock rule terminally blocks this MAC"
+  local resolved=0 domains_conditional=0 c
+  for c in $order; do
+    [ "$resolved" = "1" ] && break
+    case "$c" in
+      "$CHAIN_TIME")
+        if [ "$ov_verb" = "allow" ]; then
+          verdict="ALLOWED"; vchain="$CHAIN_TIME"; vreason="override-allow"
+          vdetail="$(explain_remaining "$ov_exp")"; resolved=1
+        elif [ "$ov_verb" = "block" ]; then
+          verdict="BLOCKED"; vchain="$CHAIN_TIME"; vreason="override-block"
+          vdetail="$(explain_remaining "$ov_exp")"; resolved=1
+        elif [ "$sched" = "block" ] && explain_mac_in get_macs "$mac"; then
+          verdict="BLOCKED"; vchain="$CHAIN_TIME"; vreason="schedule-block"
+          vdetail="schedule full-block window active"; resolved=1
+        fi
+        ;;
+      "$CHAIN_DOMAINS")
+        if explain_mac_in get_macs_blocklist "$mac"; then
+          if [ -n "$dst" ] && [ "$in_dom_set" = "1" ]; then
+            verdict="BLOCKED"; vchain="$CHAIN_DOMAINS"; vreason="domain-block"
+            vdetail=$(explain_ipset_hint "$dst" "$dom_set"); resolved=1
+          elif [ -z "$dst" ]; then
+            domains_conditional=1
+          fi
+        fi
+        ;;
+      "$CHAIN_WHITELIST")
+        if explain_mac_in get_macs_whitelist "$mac"; then
+          if [ -n "$dst" ] && [ "$in_allow_set" = "1" ]; then
+            verdict="ALLOWED"; vchain="$CHAIN_WHITELIST"; vreason="domain-allow"
+            vdetail="dst-IP $dst in $allow_set allow set"; resolved=1
+          elif [ -n "$dst" ]; then
+            verdict="BLOCKED"; vchain="$CHAIN_WHITELIST"; vreason="whitelist-default-drop"
+            vdetail="dst-IP $dst not in $allow_set allow set (whitelist default-drop)"; resolved=1
+          else
+            verdict="BLOCKED"; vchain="$CHAIN_WHITELIST"; vreason="whitelist-default-drop"
+            vdetail="whitelist mode: default-drop unless dst is in $allow_set"; resolved=1
+          fi
+        fi
+        ;;
+    esac
+  done
+  if [ "$resolved" = "0" ] && [ "$domains_conditional" = "1" ]; then
+    vdetail="allowed now; would be BLOCKED if dst resolves into $dom_set (pass a dst-ip to check)"
+  fi
+
+  # Last 10 kidblock.log lines mentioning this MAC (read-only; case-insensitive).
+  local recent; recent=$(grep -i -- "$mac" "$EXPLAIN_KIDBLOCK_LOG" 2>/dev/null | tail -10)
+
+  if [ "$as_json" = "1" ]; then
+    explain_emit_json "$mac" "$dst" "$verdict" "$vchain" "$vreason" "$vdetail" "$order" "$recent"
+  else
+    explain_emit_human "$mac" "$dst" "$verdict" "$vchain" "$vreason" "$vdetail" "$order" "$recent"
+  fi
+}
+
+# "N min remaining" for an override expiry epoch, or "" if unknown. The caller wraps
+# it in the parenthetical detail slot, so this returns the bare phrase.
+explain_remaining() {
+  local exp="$1"
+  [ -z "$exp" ] && { echo ""; return; }
+  local now; now=$(date +%s)
+  local rem=$(( (exp - now + 59) / 60 ))
+  [ "$rem" -lt 0 ] && rem=0
+  echo "$rem min remaining"
+}
+
+# Classify the chains[] rule_type for a chain given its first-rule target + override state.
+explain_rule_type() {
+  local chain="$1" target="$2"
+  case "$chain" in
+    "$CHAIN_TIME")
+      case "$target" in
+        ACCEPT) echo "override-allow" ;;
+        DROP)   if [ "${EXPLAIN_OV_VERB:-}" = "block" ]; then echo "override-block"; else echo "schedule-block"; fi ;;
+        *)      echo "$target" ;;
+      esac
+      ;;
+    "$CHAIN_DOMAINS")   echo "domain-block" ;;
+    "$CHAIN_WHITELIST")
+      case "$target" in
+        RETURN) echo "domain-allow" ;;
+        DROP)   echo "whitelist-default-drop" ;;
+        *)      echo "$target" ;;
+      esac
+      ;;
+    *) echo "$target" ;;
+  esac
+}
+
+explain_emit_human() {
+  local mac="$1" dst="$2" verdict="$3" vchain="$4" vreason="$5" vdetail="$6" order="$7" recent="$8"
+  echo "=== kidblock explain-mac: $mac${dst:+ -> $dst} ==="
+  if [ -n "$vchain" ]; then
+    echo "VERDICT: $verdict by $vchain: $vreason${vdetail:+ ($vdetail)}"
+  else
+    echo "VERDICT: $verdict${vdetail:+ ($vdetail)}"
+  fi
+  echo
+  echo "Chain walk (FORWARD visit order):"
+  local c rule target pkts bytes ipset rtype
+  for c in $order; do
+    rule=$(explain_chain_first_rule "$c" "$mac")
+    if [ -z "$rule" ]; then
+      printf "  %-20s MAC rule: no\n" "$c"
+    else
+      set -- $rule
+      target="$1"; pkts="$2"; bytes="$3"; ipset="${4:-}"
+      rtype=$(explain_rule_type "$c" "$target")
+      printf "  %-20s MAC rule: yes  %-7s pkts=%s bytes=%s%s  (%s)\n" \
+        "$c" "$target" "$pkts" "$bytes" "${ipset:+ ipset=$ipset}" "$rtype"
+    fi
+  done
+  echo
+  echo "Recent log (last 10 matching $mac):"
+  if [ -n "$recent" ]; then
+    echo "$recent" | sed 's/^/  /'
+  else
+    echo "  (no matching log lines)"
+  fi
+}
+
+explain_emit_json() {
+  local mac="$1" dst="$2" verdict="$3" vchain="$4" vreason="$5" vdetail="$6" order="$7" recent="$8"
+  local chains_json="" first=1 c rule target pkts bytes ipset rtype present
+  for c in $order; do
+    rule=$(explain_chain_first_rule "$c" "$mac")
+    if [ -z "$rule" ]; then
+      present="false"; target=""; pkts=0; bytes=0; ipset=""; rtype=""
+    else
+      present="true"
+      set -- $rule
+      target="$1"; pkts="$2"; bytes="$3"; ipset="${4:-}"
+      rtype=$(explain_rule_type "$c" "$target")
+    fi
+    [ "$first" = "0" ] && chains_json="$chains_json,"
+    first=0
+    chains_json="$chains_json{\"name\":\"$c\",\"mac_rule_present\":$present,\"rule_type\":\"$(printf '%s' "$rtype" | json_escape)\",\"pkts\":${pkts:-0},\"bytes\":${bytes:-0},\"ipset_hint\":\"$(printf '%s' "$ipset" | json_escape)\"}"
+  done
+
+  local log_json="" lfirst=1 line
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    [ "$lfirst" = "0" ] && log_json="$log_json,"
+    lfirst=0
+    log_json="$log_json\"$(printf '%s' "$line" | json_escape)\""
+  done <<EOF
+$recent
+EOF
+
+  printf '{"mac":"%s","dst_ip":"%s","verdict":"%s","verdict_chain":"%s","verdict_reason":"%s","verdict_detail":"%s","chains":[%s],"recent_log":[%s]}\n' \
+    "$(printf '%s' "$mac" | json_escape)" \
+    "$(printf '%s' "$dst" | json_escape)" \
+    "$(printf '%s' "$verdict" | json_escape)" \
+    "$(printf '%s' "$vchain" | json_escape)" \
+    "$(printf '%s' "$vreason" | json_escape)" \
+    "$(printf '%s' "$vdetail" | json_escape)" \
+    "$chains_json" \
+    "$log_json"
+}
+
 case "${1:-}" in
   block)               cmd_block ;;
   allow)               cmd_allow ;;
   reapply|tick)        cmd_reapply ;;
   status)              shift; cmd_status "${1:-}" ;;
+  explain-mac)         shift; cmd_explain_mac "$@" ;;
   override-allow)      shift; cmd_override allow "$@" ;;
   override-block)      shift; cmd_override block "$@" ;;
   clear-override)      shift; cmd_clear_override "${1:-}" ;;
@@ -772,6 +1102,10 @@ Usage: $0 <subcommand> [args]
 Subcommands:
   reapply | tick               Re-evaluate KIDBLOCK_TIME against schedule + overrides
   status [<MAC>]               Print status (or single-MAC override state)
+  explain-mac <MAC> [<dst>] [--json]
+                               Explain the effective verdict for <MAC> (read-only):
+                               walks the FORWARD chains, reports the first rule that
+                               catches it + reason + recent log; --json for the UI
   override-block <MAC> <min>   Block <MAC> only for <min> minutes
   override-allow <MAC> <min>   Allow <MAC> only for <min> minutes
   override-block --all <min>   Block ALL controlled MACs for <min> minutes (bulk)

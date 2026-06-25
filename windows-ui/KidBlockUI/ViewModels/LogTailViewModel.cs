@@ -63,6 +63,35 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
     // DM10: default OFF so DNS volume only surfaces when the parent opts in.
     [ObservableProperty] private bool _showDns          = false;
 
+    // DM22: per-MAC log filter. When non-empty, the view ANDs a "Message contains this
+    // MAC" predicate on top of the per-Kind filters (LogEntry carries no parsed MAC
+    // field, so the kidblock.sh log() lines that name a MAC are matched by substring).
+    // Set via SetMacFilter (right-click a Devices row); cleared via the header chip's x.
+    // NOT reset by the reconnect-with-backoff loop, so it survives a stream reconnect.
+    [ObservableProperty] private string _filterMac = string.Empty;
+    [ObservableProperty] private string _filterMacLabel = string.Empty;
+
+    public bool HasMacFilter => FilterMac.Length > 0;
+
+    public void SetMacFilter(string mac, string? name)
+    {
+        FilterMac = mac ?? string.Empty;
+        FilterMacLabel = string.IsNullOrWhiteSpace(name) ? (mac ?? string.Empty) : $"{name} ({mac})";
+    }
+
+    [RelayCommand]
+    private void ClearMacFilter()
+    {
+        FilterMac = string.Empty;
+        FilterMacLabel = string.Empty;
+    }
+
+    partial void OnFilterMacChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasMacFilter));
+        View.Refresh();
+    }
+
     public LogTailViewModel(RouterConfig config, Dispatcher dispatcher)
     {
         _config = config;
@@ -127,20 +156,26 @@ public sealed partial class LogTailViewModel : ObservableObject, IDisposable
     private bool FilterEntry(object o)
     {
         if (o is not LogEntry e) return false;
-
-        return e.Kind switch
-        {
-            LogKind.Block        => ShowBlock,
-            LogKind.Allow        => ShowAllow,
-            LogKind.Override     => ShowOverride,
-            LogKind.ScheduleTick => ShowScheduleTick,
-            LogKind.Install      => ShowInstall,
-            LogKind.Error        => ShowError,
-            LogKind.Other        => ShowOther,
-            LogKind.Dns          => ShowDns,
-            _                    => true,
-        };
+        if (!KindVisible(e.Kind)) return false;
+        // DM22: AND the per-MAC predicate on top of the per-Kind filters.
+        if (FilterMac.Length > 0 &&
+            e.Message.IndexOf(FilterMac, StringComparison.OrdinalIgnoreCase) < 0)
+            return false;
+        return true;
     }
+
+    private bool KindVisible(LogKind kind) => kind switch
+    {
+        LogKind.Block        => ShowBlock,
+        LogKind.Allow        => ShowAllow,
+        LogKind.Override     => ShowOverride,
+        LogKind.ScheduleTick => ShowScheduleTick,
+        LogKind.Install      => ShowInstall,
+        LogKind.Error        => ShowError,
+        LogKind.Other        => ShowOther,
+        LogKind.Dns          => ShowDns,
+        _                    => true,
+    };
 
     private async Task RunLoopAsync(CancellationToken ct)
     {

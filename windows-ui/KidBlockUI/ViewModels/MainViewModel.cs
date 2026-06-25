@@ -60,6 +60,25 @@ public sealed partial class MainViewModel : ObservableObject
     // (title, body) -> bool. Kept off the row VMs so they stay UI-thread-agnostic.
     public Func<string, string, bool>? KillConfirm { get; set; }
 
+    // DM22: View-registered hooks (kept off the row VMs, same idiom as KillConfirm).
+    //   WhyRequested        -- open the WhyBlockedDialog popover for a device row.
+    //   ShowLogPaneRequested -- pin-show the DM17 Live Log dock pane (it may be auto-hidden).
+    public Action<DeviceRowViewModel>? WhyRequested { get; set; }
+    public Action? ShowLogPaneRequested { get; set; }
+
+    // Exposed so the View can spin up the Why? dialog's own RouterClient/SSH session.
+    public RouterConfig Config => _config;
+
+    public void RequestWhy(DeviceRowViewModel row) => WhyRequested?.Invoke(row);
+
+    // DM22: a Devices-row "Filter log to this MAC" -> set the per-MAC log filter and
+    // pin-show the Live log pane so the filtered result is immediately visible.
+    public void FilterLogToMac(DeviceRowViewModel row)
+    {
+        LogTail.SetMacFilter(row.Mac, row.Name);
+        ShowLogPaneRequested?.Invoke();
+    }
+
     partial void OnSelectedDeviceChanged(DeviceRowViewModel? value)
     {
         // Pivot the Domains pane to reflect the selected device's mode. Null = no
