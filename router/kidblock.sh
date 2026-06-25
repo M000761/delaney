@@ -27,8 +27,10 @@
 #   verb is "block" or "allow". Expired rows are pruned at every reapply.
 #   A per-MAC override takes precedence over both the schedule (KIDBLOCK_TIME)
 #   AND any blocklist/whitelist filtering (KIDBLOCK_DOMAINS / KIDBLOCK_WHITELIST)
-#   because the override rule lives at the top of KIDBLOCK_TIME and terminates
-#   FORWARD traversal (ACCEPT for allow; DROP for block).
+#   because the override rule lives at the top of KIDBLOCK_TIME, which ensure_chains()
+#   places FIRST in the FORWARD chain (per its REVERSE iteration; see
+#   router/tests/test_chain_order.sh), so its ACCEPT (allow) / DROP (block)
+#   terminates FORWARD traversal before KIDBLOCK_DOMAINS / KIDBLOCK_WHITELIST run.
 
 set -u
 
@@ -97,7 +99,11 @@ get_macs_whitelist() {
 }
 
 ensure_chains() {
-  for c in "$CHAIN_TIME" "$CHAIN_DOMAINS" "$CHAIN_WHITELIST"; do
+  # REVERSED iteration: -I FORWARD 1 stacks insertions, so the LAST iterated chain
+  # lands FIRST in FORWARD. TIME goes LAST so its override-row visits FIRST. Do not
+  # re-order without re-thinking; reds the override precedence invariant. (DM21; see
+  # router/tests/test_chain_order.sh.)
+  for c in "$CHAIN_WHITELIST" "$CHAIN_DOMAINS" "$CHAIN_TIME"; do
     iptables  -nL "$c" >/dev/null 2>&1 || iptables  -N "$c"
     ip6tables -nL "$c" >/dev/null 2>&1 || ip6tables -N "$c"
     iptables  -C FORWARD -j "$c" 2>/dev/null || iptables  -I FORWARD 1 -j "$c"
