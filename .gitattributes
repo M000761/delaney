@@ -1,0 +1,7 @@
+# Pin router deploy artifacts (and this file) to LF so core.autocrlf=true on a Windows
+# checkout host cannot rewrite them to CRLF -- a CRLF script scp'd to the EdgeRouter (Linux)
+# fails with a bad-interpreter error. Scoped to router/ to avoid surprising Windows tooling.
+router/*.sh text eol=lf
+router/*.conf text eol=lf
+router/tests/*.sh text eol=lf
+.gitattributes text eol=lf
