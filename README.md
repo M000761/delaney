@@ -1,8 +1,9 @@
 # KidBlock — scheduled internet control for EdgeRouter Pro 8
 
 A small system that blocks specific devices (by MAC address) from the internet
-on a schedule, with on-demand overrides triggered from desktop shortcuts on
-your Windows notebook. Optionally also blocks domains (YouTube, etc.) via
+on a schedule, with on-demand overrides from your Windows notebook — driven
+either by desktop **PowerShell shortcuts** or by the **KidBlockUI** WPF control
+panel (`windows-ui/`). Optionally also blocks domains (YouTube, etc.) via
 router-side DNS.
 
 ## How it works
@@ -33,10 +34,27 @@ State transitions use **iptables** directly — they don't rewrite the EdgeOS
 config, so they don't wear out the router's flash and don't show up in
 `show configuration`. A boot hook reinstates the iptables chain after reboot.
 
+## Control surfaces — which one do I use?
+
+Two front-ends drive the **same** router-side `kidblock.sh` over the **same** SSH
+key (`~/.ssh/kidblock_ed25519`); they're interchangeable and can be used side by
+side. Neither stores any state of its own — the schedule and overrides live on
+the router, so a change made in one shows up immediately in the other.
+
+| | **PowerShell shortcuts** (`windows/`) | **KidBlockUI** WPF app (`windows-ui/`) |
+|---|---|---|
+| Best for | quick, fire-and-forget overrides from the Desktop | sitting down to see and change everything |
+| What you get | one action per shortcut: Status, Override Allow/Block, Block/Allow Now, Clear Override, Edit Devices/Schedule | a full GUI: live state, edit the schedule + device list, manage domain blocklists, tail the router log, "why is this blocked?" diagnostics, apply-with-confirm/diff |
+| Setup | run the one-time scripts in *Installation* below | build the .NET 8 app — see [`windows-ui/KidBlockUI/README.md`](windows-ui/KidBlockUI/README.md) |
+| Runs as | transient PowerShell windows | a persistent window with a system-tray icon |
+
+The PowerShell scripts are the original surface and the quickest way to get
+going; the **KidBlockUI** app is the richer, primary control panel.
+
 ## Files in this project
 
 ```
-DELANEY_INTERNET/
+delaney/                               ← repo root (C:\CC\delaney)
 ├── README.md                          ← you are here
 ├── router/                            ← files that live on the EdgeRouter
 │   ├── kidblock.sh                       main script (block/allow/override/status)
@@ -45,19 +63,33 @@ DELANEY_INTERNET/
 │   ├── kidblock-domains.conf             DNS blocklist (YouTube etc.)
 │   ├── kidblock-init.sh                  boot hook → calls kidblock.sh init
 │   └── router-setup-commands.txt         manual install steps (if not using Install-Router-Scripts.ps1)
-└── windows/                           ← files that stay on the notebook
-    ├── config.ps1                        central config (router IP, user, key path)
-    ├── Setup-SSH-Key.ps1                 one-time: generate SSH key + show pubkey to install
-    ├── Install-Router-Scripts.ps1        one-time: uploads router files + schedules tick
-    ├── Create-Desktop-Shortcuts.ps1      one-time: makes the .lnk shortcuts on your Desktop
-    ├── Status.ps1                        show current state
-    ├── Block-Now.ps1                     force block (reverts within 1 min)
-    ├── Allow-Now.ps1                     force allow (reverts within 1 min)
-    ├── Override-Allow.ps1                allow for N min then revert
-    ├── Override-Block.ps1                block for N min then revert
-    ├── Clear-Override.ps1                cancel an active override
-    ├── Edit-Devices.ps1                  open MAC list in Notepad, save back
-    └── Edit-Schedule.ps1                 open schedule in Notepad, save back
+├── windows/                           ← PowerShell control surface (the notebook)
+│   ├── config.ps1                        central config (router IP, user, key path)
+│   ├── Setup-SSH-Key.ps1                 one-time: generate SSH key + show pubkey to install
+│   ├── Install-Router-Scripts.ps1        one-time: uploads router files + schedules tick
+│   ├── Create-Desktop-Shortcuts.ps1      one-time: makes the .lnk shortcuts on your Desktop
+│   ├── Status.ps1                        show current state
+│   ├── Block-Now.ps1                     force block (reverts within 1 min)
+│   ├── Allow-Now.ps1                     force allow (reverts within 1 min)
+│   ├── Override-Allow.ps1                allow for N min then revert
+│   ├── Override-Block.ps1                block for N min then revert
+│   ├── Clear-Override.ps1                cancel an active override
+│   ├── Edit-Devices.ps1                  open MAC list in Notepad, save back
+│   ├── Edit-Schedule.ps1                 open schedule in Notepad, save back
+│   └── Test-Blocking.ps1                 verify domain blocking from the blocked device (DNS + TCP-443 probe)
+└── windows-ui/                         ← WPF control panel (the notebook; primary surface)
+    ├── KidBlockUI.sln                     Visual Studio solution
+    └── KidBlockUI/                        .NET 8 WPF app (Syncfusion Ribbon + FluentDark)
+        ├── KidBlockUI.csproj                 net8.0-windows; SSH.NET + CommunityToolkit.Mvvm + Syncfusion v33
+        ├── appsettings.json                  router host/user/key path + router script paths
+        ├── App.xaml(.cs)                      startup: registers the Syncfusion licence, applies FluentDark, inits the tray
+        ├── Views/                             windows, dialogs, and the Ribbon shell
+        ├── ViewModels/                        MVVM view-models (CommunityToolkit.Mvvm)
+        ├── Models/                            Device / RouterState / ScheduleWindow / DomainEntry / LogEntry
+        ├── Services/                          RouterClient (SSH.NET) + config/schedule/domains parsers
+        ├── Themes/                            Theme.xaml semantic colour keys (PaletteLint-gated)
+        ├── Resources/                         domain-categories.json, etc.
+        └── README.md                          build prerequisites + how to run
 ```
 
 ## Installation — do this once, in order
@@ -97,7 +129,7 @@ shortcut.
 
 In PowerShell, from the project folder:
 ```powershell
-cd C:\Users\dr_go\OneDrive\Documents\Claude\Projects\DELANEY_INTERNET\windows
+cd C:\CC\delaney\windows
 powershell -ExecutionPolicy Bypass -File .\Setup-SSH-Key.ps1
 ```
 
