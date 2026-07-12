@@ -1,0 +1,25 @@
+[START] 2026-07-12T23:34:56Z audit-and-refresh-arch delaney
+[INFO] preset_invoked: audit-and-refresh-arch
+[INFO] recon: tfi-edit.py --version -> kernel-tools-v1 (via python fallback; bare-name py shim unavailable in shell)
+[INFO] phase=A source=dashboard walked: _cowork/dashboard-delaney.json -- views=["boundary-map"], current_focus="Project bootstrap -- no milestones yet", WBS P1-P4 all children=[], _migration_history records DM1-DM23 graduated (2026-06-03..06-25)
+[INFO] phase=A source=working-agreement MOUNT _cowork/working-agreement.md ABSENT (no in-repo stub); kernel canonical is authoritative per AGENTS.md
+[INFO] phase=A source=runs walked _cowork/runs/ -- 8 DM run-logs (DM1-DM11) + 1 prior audit-and-refresh-arch log (2026-06-10); newest mtime 2026-06-10
+[INFO] phase=A source=source-tree walked MOUNT (excl bin/ obj/ .git/) -- 88 tracked files: router/ (kidblock.sh + 4 .conf + init + 2 tests), windows/ (13 .ps1), windows-ui/KidBlockUI/ (.NET 8 WPF, Syncfusion Ribbon)
+[GATE] tfi-audit-report rc=0
+[INFO] phase=A audit report written: _cowork/reports/2026-07-12T23-34-56Z-audit-delaney.md (LF preserved)
+[INFO] phase=B required-reads done: arch-snapshot.md (Rules), DEPRECATED.md (service-blueprint + substrate-defence skip-registry), ARCH-VOCAB.md (view catalog v3.0), GLOSSARY.md (canonical names)
+[INFO] phase=B source=source-tree walked MOUNT -- boundary crossings: process (PS1 scripts, WPF Ribbon shell, Why? explain-mac path, kidblock.sh + iptables/dnsmasq/ipset, EdgeOS tick/boot), persistence (4 .conf + overrides store + kidblock.log), network (SSH hop), device (EdgeRouter)
+[INFO] phase=B source=dep-manifest KidBlockUI.csproj -- SSH.NET 2025.1.0 + CommunityToolkit.Mvvm 8.2.2 + 6x Syncfusion.*.WPF 33.2.13 (all active); no tech-stack view declared so not emitted
+[INFO] phase=B source=dashboard views=["boundary-map"] -> emit ONLY ## System overview
+[INFO] phase=B source=prior-arch _cowork/architecture/delaney-arch.md present (2026-06-26, delaney HEAD 28d2e0d) -> diff baseline = MOUNT canonical
+[INFO] phase=B view drafted: boundary-map -> ## System overview (13 nodes, topology unchanged since 2026-06-26; only DM24 docs landed 28d2e0d..655c0ac)
+[GATE] tfi-arch-canonical rc=0
+[GATE] tfi-arch-mirror rc=0
+[INFO] mirror byte-identical to canonical; both LF-preserved
+[INFO] step=summary
+audit-report-path:  _cowork/reports/2026-07-12T23-34-56Z-audit-delaney.md
+arch-md-path:       _cowork/architecture/delaney-arch.md
+nodes-added:        0
+nodes-retired:      0
+orphans-flagged:    0
+[END] outcome=success
