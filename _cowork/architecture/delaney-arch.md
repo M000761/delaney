@@ -1,8 +1,8 @@
-<!-- preset-freshness: {"generated_by": "audit-and-refresh-arch.md", "last_refresh_ts": "2026-07-12T23:34:56Z", "last_refresh_sha": "655c0ac4fc4ffcb422e2c7b41c78ea3db8520978", "reads": ["C:\\CC\\delaney", "_cowork/dashboard-delaney.json", "_cowork/GLOSSARY.md", "_cowork/PROJECT-MAP.json"]} -->
+<!-- preset-freshness: {"generated_by": "audit-and-refresh-arch.md", "last_refresh_ts": "2026-07-30T23:33:33Z", "last_refresh_sha": "2000af2cb812378c76cc87d9ef46ef2b028d9d22", "reads": ["C:\\CC\\delaney", "_cowork/dashboard-delaney.json", "_cowork/GLOSSARY.md", "_cowork/PROJECT-MAP.json"]} -->
 
-# [Delaney] Architecture snapshot — delaney — 2026-07-12
+# [Delaney] Architecture snapshot — delaney — 2026-07-30
 
-> Static architecture documentation (ARCH-VOCAB v3.0). delaney's `views:` manifest declares only `boundary-map`, so this file carries exactly that one view. The boundary topology is stable at the DM1–DM23 shape: a router-enforced internet-control system driven from a Windows notebook by two interchangeable front-ends over SSH. Since the 2026-06-26 refresh (which landed the DM12–DM23 Syncfusion Ribbon-shell migration) only **DM24** has landed — a docs-only refresh of `README.md` + a new `windows-ui/KidBlockUI/README.md`, no structural or dependency change — so this run re-attests the same 13-node map and refreshes only the marker + date. Companion Phase A audit at `C:\CC\Cowork Project Prompt Enginner\_cowork\reports\2026-07-12T23-34-56Z-audit-delaney.md`.
+> Static architecture documentation (ARCH-VOCAB v3.0). delaney's `views:` manifest declares only `boundary-map`, so this file carries exactly that one view. **Nothing has changed since the last refresh**: the only commit in the window is `a937b7f`, the 2026-07-13 arch-refresh commit that landed the previous snapshot itself. No source file, no dependency and no boundary fact has moved. This run therefore re-attests the same 13-node map and refreshes only the freshness marker and the date. The topology remains the DM1–DM24 shape: a router-enforced internet-control system driven from a Windows notebook by two interchangeable front-ends over SSH. Companion Phase A audit at `_cowork/reports/2026-07-30T23-33-33Z-audit-delaney.md`.
 
 ## System overview
 
@@ -49,18 +49,18 @@ Kinds in play: **process** (notebook PowerShell scripts · KidBlockUI WPF Ribbon
 
 ## Diff vs last run
 
-Prior snapshot: `last_refresh_sha=1ab61a4` (2026-06-26, delaney HEAD `28d2e0d` / DM23). This run: kernel-side regen, delaney HEAD `655c0ac` — the only delaney commit since is **DM24** (`docs: refresh root README for the KidBlockUI WPF surface + add windows-ui/KidBlockUI/README`), a documentation-only change touching `README.md` + a new `windows-ui/KidBlockUI/README.md`.
+Prior snapshot: `last_refresh_sha=655c0ac` (2026-07-12). This run: delaney HEAD `a937b7f` — **1 commit** between, and that commit *is* the prior refresh landing (`docs(arch): audit-and-refresh-arch all-run — delaney audit + arch snapshot refresh`, 3 files: the arch.md, its audit report and its run-log). No source file, script, config or dependency changed.
 
-- **Added/removed System overview nodes:** +0 / −0. Topology unchanged since 2026-06-26 (13 nodes); no boundary crossing was added or removed by the DM24 docs commit.
+- **Added/removed System overview nodes:** **+0 / −0**. Topology unchanged at 13 nodes / 14 edges.
 - **Added/removed views:** none (`views:` manifest unchanged at `["boundary-map"]`; no `tech-stack` view declared).
-- **Added/removed deps:** n/a (no `tech-stack` view declared). For the record `windows-ui/KidBlockUI/KidBlockUI.csproj` is unchanged since the last run — `SSH.NET 2025.1.0` + `CommunityToolkit.Mvvm 8.2.2` + six `Syncfusion.*.WPF 33.2.13` packages, all `active`.
+- **Added/removed deps:** n/a (no `tech-stack` view declared). For the record `windows-ui/KidBlockUI/KidBlockUI.csproj` is unchanged — `SSH.NET 2025.1.0` + `CommunityToolkit.Mvvm 8.2.2` + six `Syncfusion.*.WPF 33.2.13` packages. Two of those six (`Syncfusion.SfGrid.WPF`, `Syncfusion.Shared.WPF`) have zero source references; carried in this run's Phase A audit rather than here, since delaney declares no `tech-stack` view.
 
 ## Orphan views
 
-(no orphan views found)
+(no orphan views found) — delaney declares no `sitemap` view, so there is no view set to orphan-tag.
 
 ## Deprecated / replace libs
 
-(no deprecated or replace-status libs)
+(no deprecated or replace-status libs) — no `tech-stack` view is declared for delaney; the two zero-reference Syncfusion packages noted above are carried in the Phase A audit report.
 
 <!-- eof: arch-snapshot-v1.9 -->
