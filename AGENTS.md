@@ -1,6 +1,6 @@
 # AGENTS.md — delaney
 
-> Five-line orientation for any AI coding agent (Claude Code, Codex, Cursor, Cline, Aider, etc.) entering this repo. Rendered from the cowork kernel's `_cowork/templates/_cowork-AGENTS.template.md`; canonical methodology lives in the kernel. Don't hand-edit this file — edit the template (or, if the project has one, its `vars/delaney.json` in the kernel — vars-less projects render from the generic scaffold) and re-render with `render-agents.py`. Re-stamp provenance lives in `git log --follow`.
+> Five-line orientation for any AI coding agent (Claude Code, Codex, Cursor, Cline, Aider, etc.) entering this repo. This project runs on the Cowork kernel, an internal developer platform (IDP) for AI agents: milestone rows carry their own executable instructions, quality gates enforce definition-of-done at close, every run leaves a run-log receipt, and the kernel mines its own history to improve (umbrella term ratified at KM691; term map in the kernel's `_cowork/reference/PRODUCT-VOCABULARY.md`). Rendered from the cowork kernel's `_cowork/templates/_cowork-AGENTS.template.md`; canonical methodology lives in the kernel. Don't hand-edit this file — edit the template (or, if the project has one, its `vars/delaney.json` in the kernel — vars-less projects render from the generic scaffold) and re-render with `render-agents.py`. Re-stamp provenance lives in `git log --follow`.
 
 **Start here:** read the kernel-side `_cowork/dashboard-delaney.json` for the current WBS (kernel-root-relative per KM293; this repo's `_cowork/` does NOT carry a dashboard.json). Owner adds a `PROJECT_STATUS.md` at this repo root if/when the project warrants one.
 
@@ -27,4 +27,4 @@ See `../Cowork Project Prompt Enginner/_cowork/COWORK-SESSION-SETUP.md` for the 
 
 *Project prefix: `DM`. Mount: `C:\CC\delaney`. Rendered from the kernel AGENTS template — edit the template or vars, not this file.*
 
-<!-- eof: agents-md-v3 -->
+<!-- eof: agents-md-v4 -->
